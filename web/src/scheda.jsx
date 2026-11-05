@@ -41,6 +41,24 @@ export function Scheda({ id, chiedi }) {
         </div>
       </div>
 
+      {msg && <div className="ok" role="status">{msg}</div>}{err && <div className="errore">{err}</div>}
+      <div className="riga">
+        <button type="button" className="b pieno grande" onClick={() => azione(() => api('/api/lista', { metodo: 'POST', corpo: { voce_id: p.voce_id, prodotto_id: p.id, quantita: p.sfuso ? 1 : (p.quantita || 1) } }), 'Messo in lista proprio questo prodotto')}>Metti in lista questo</button>
+        {!chiediPrezzo && <button type="button" className="b grande contorno viola" onClick={() => { setPrezzo(true); suCima(); }}>Aggiungi un prezzo</button>}
+        <button type="button" className={`b grande ${p.preferito ? 'giallo' : ''}`} aria-pressed={p.preferito} onClick={() => azione(() => api('/api/preferiti', { metodo: 'POST', corpo: { voce_id: p.voce_id, prodotto_id: p.preferito ? null : p.id } }), p.preferito ? 'Tolto dai preferiti' : `Ora è il tuo preferito per «${p.voce}»`)}>{p.preferito ? '★ È il mio preferito' : '☆ Segna come preferito'}</button>
+      </div>
+
+    </section>
+
+    {/* 0.72 (Nazario, 05/11): la cosa che si cambia più spesso è il prezzo, quindi i prezzi vengono subito dopo il nome */}
+    <section className="carta">
+      <h2>Prezzi nei supermercati</h2>
+      {!p.sfuso && !(p.quantita > 0) && <FormatoMancante p={p} onFatto={(t) => { setMsg(t); s.ricarica(); }} />}
+      {p.ultimi.length ? <ul className="prezzi-scheda">{p.ultimi.map((x) => <RigaPrezzo key={x.id} x={x} p={p} onFatto={() => s.ricarica()} />)}</ul> : <p className="muto">Nessun prezzo ancora.</p>}
+      {p.storia.length > 0 && <details className="altre"><summary>Prezzi precedenti ({p.storia.length})</summary><ul className="prezzi-scheda">{p.storia.map((x) => <RigaPrezzo key={x.id} x={x} p={p} storia onFatto={() => s.ricarica()} />)}</ul></details>}
+    </section>
+
+    <section className="scheda">
       <div className={`giudizio ${g ? g.colore : 'ignoto'}`}>
         <span className="luce grande" aria-hidden="true" />
         <div><b>{g ? g.parola : p.non_alimentare ? 'Ancora nessun voto' : 'Ancora pochi dati'}</b>
@@ -55,19 +73,6 @@ export function Scheda({ id, chiedi }) {
         <p className="muto piccolo">Il voto è la percentuale dei punti presi su quelli che si possono dare con i dati che conosciamo{p.perche.bonus.length ? ', più o meno i punti qui sopra' : ''}.</p>
       </details>}
       {p.puoUnire && <UnisciCerca key={p.id} p={p} onUnito={unito} />}
-      {/* mancano dati per il giudizio: si leggono dalle foto dell'etichetta */}
-      {!p.non_alimentare && (!p.nutriscore || p.additivi == null || !p.ingredienti) && <LeggiEtichetta evidente={!g} titolo={g ? 'Rendi il giudizio più preciso: fotografa l\'etichetta' : 'Dai un giudizio a questo prodotto: fotografa l\'etichetta'} testoFatto="Ho aggiunto alla scheda i dati che mancavano." onLetta={async (l) => {
-        const r = await api(`/api/prodotti/${p.id}/integra`, { metodo: 'POST', corpo: { ingredienti: l.ingredienti, additivi: Array.isArray(l.additivi) ? l.additivi : undefined, nutriscore: l.nutriscore, valori: l.valori || undefined, imballaggio: l.imballaggio || undefined, produttore: l.produttore, descrizione: l.descrizione, origine: l.origine || undefined, bio: l.bio || undefined, foto: l.foto, ...(l.quantita > 0 ? { quantita: l.quantita, formato_unita: l.unita, pezzi: l.pezzi } : {}) } });
-        setMsg(r.campi?.length ? `Ho aggiunto: ${r.campi.join(', ')}.` : 'La scheda aveva già questi dati.'); await s.ricarica();
-      }} />}
-
-      {msg && <div className="ok" role="status">{msg}</div>}{err && <div className="errore">{err}</div>}
-      <div className="riga">
-        <button type="button" className="b pieno grande" onClick={() => azione(() => api('/api/lista', { metodo: 'POST', corpo: { voce_id: p.voce_id, prodotto_id: p.id, quantita: p.sfuso ? 1 : (p.quantita || 1) } }), 'Messo in lista proprio questo prodotto')}>Metti in lista questo</button>
-        {!chiediPrezzo && <button type="button" className="b grande contorno viola" onClick={() => { setPrezzo(true); suCima(); }}>Aggiungi un prezzo</button>}
-        <button type="button" className={`b grande ${p.preferito ? 'giallo' : ''}`} aria-pressed={p.preferito} onClick={() => azione(() => api('/api/preferiti', { metodo: 'POST', corpo: { voce_id: p.voce_id, prodotto_id: p.preferito ? null : p.id } }), p.preferito ? 'Tolto dai preferiti' : `Ora è il tuo preferito per «${p.voce}»`)}>{p.preferito ? '★ È il mio preferito' : '☆ Segna come preferito'}</button>
-      </div>
-
       <dl className="dati">
         {!p.non_alimentare && <><div><dt>Valori nutrizionali</dt><dd>{p.nutriscore ? <><span className={`nutri n${p.nutriscore}`}>{p.nutriscore.toUpperCase()}</span> Nutri-Score</> : <span className="muto">Non si sa</span>}</dd></div>
         {p.valori && (() => { // valori nutrizionali letti dall'etichetta, per 100 g o 100 ml
@@ -93,13 +98,12 @@ export function Scheda({ id, chiedi }) {
       {p.descrizione && <p>{p.descrizione}</p>}
       {p.ingredienti && <div className="ingredienti"><h2>{p.non_alimentare ? 'Composizione' : 'Ingredienti'}</h2><p>{p.ingredienti}</p></div>}
       {p.note && <p className="muto">{p.note}</p>}
-    </section>
+      {/* mancano dati per il giudizio: si leggono dalle foto dell'etichetta */}
+      {!p.non_alimentare && !p.sfuso && p.reparto !== 'ortofrutta' && (!p.nutriscore || p.additivi == null || !p.ingredienti) && <LeggiEtichetta evidente={!g} titolo={g ? 'Rendi il giudizio più preciso: fotografa l\'etichetta' : 'Dai un giudizio a questo prodotto: fotografa l\'etichetta'} testoFatto="Ho aggiunto alla scheda i dati che mancavano." onLetta={async (l) => {
+        const r = await api(`/api/prodotti/${p.id}/integra`, { metodo: 'POST', corpo: { ingredienti: l.ingredienti, additivi: Array.isArray(l.additivi) ? l.additivi : undefined, nutriscore: l.nutriscore, valori: l.valori || undefined, imballaggio: l.imballaggio || undefined, produttore: l.produttore, descrizione: l.descrizione, origine: l.origine || undefined, bio: l.bio || undefined, foto: l.foto, ...(l.quantita > 0 ? { quantita: l.quantita, formato_unita: l.unita, pezzi: l.pezzi } : {}) } });
+        setMsg(r.campi?.length ? `Ho aggiunto: ${r.campi.join(', ')}.` : 'La scheda aveva già questi dati.'); await s.ricarica();
+      }} />}
 
-    <section className="carta">
-      <h2>Prezzi nei supermercati</h2>
-      {!p.sfuso && !(p.quantita > 0) && <FormatoMancante p={p} onFatto={(t) => { setMsg(t); s.ricarica(); }} />}
-      {p.ultimi.length ? <ul className="prezzi-scheda">{p.ultimi.map((x) => <RigaPrezzo key={x.id} x={x} p={p} onFatto={() => s.ricarica()} />)}</ul> : <p className="muto">Nessun prezzo ancora.</p>}
-      {p.storia.length > 0 && <details className="altre"><summary>Prezzi precedenti ({p.storia.length})</summary><ul className="prezzi-scheda">{p.storia.map((x) => <RigaPrezzo key={x.id} x={x} p={p} storia onFatto={() => s.ricarica()} />)}</ul></details>}
     </section>
 
     <div className="colonna">
@@ -171,15 +175,17 @@ function RigaPrezzo({ x, p, storia = false, onFatto }) {
   const per = perUnita(p.unita, p.pezzo);
   const conf = !p.sfuso && p.quantita > 0 ? (p.unita === 'kg' && p.quantita < 1 ? `${Math.round(p.quantita * 1000)} g` : p.unita === 'l' && p.quantita < 1 ? `${Math.round(p.quantita * 1000)} ml` : `${num(p.quantita, 3)} ${p.unita === 'pz' ? (p.quantita === 1 ? (p.pezzo || 'pezzo') : plurale(p.pezzo || 'pezzo')) : p.unita}`) : '';
   const fai = async (f) => { setErr(''); try { await f(); setApri(false); onFatto(); } catch (e) { setErr(e.message); } };
+  // 0.72: si apre sempre con il prezzo di adesso (anche se intanto è stato cambiato da «Modifica la scheda»)
+  const apriCorreggi = () => { setV(String(x.prezzo).replace('.', ',')); setOff(!!x.offerta); setDal(x.valido_dal || ''); setAl(x.valido_al || ''); setErr(''); setApri(true); };
   return <li className={apri ? 'aperto' : ''}>
     <div className="riga-prezzo">
       <div><b>{x.catena}</b><span>{storia ? `${data(x.rilevato_il)}/${x.rilevato_il.slice(2, 4)}` : `rilevato il ${data(x.rilevato_il)}`}{!storia && !x.quiValido ? ', non vale nella tua zona' : ''}</span>
         {!storia && <span className="etichette">{x.offerta ? <span className="pill offerta">offerta</span> : null}<StatoPrezzo s={x.stato} al={x.valido_al} /></span>}
-        {x.modificabile && !apri && <button type="button" className="link" onClick={() => setApri(true)}>Correggi</button>}</div>
+        {x.modificabile && !apri && <button type="button" className="b piccolo contorno correggi-prezzo" onClick={apriCorreggi}>Correggi il prezzo</button>}</div>
       <div className="dx"><Cartellino n={x.prezzo} />{conf ? <span className="muto piccolo">la confezione da {conf}<br />= {euro(x.unitario)} al {per}</span> : p.sfuso ? <span className="muto piccolo">al {per}</span> : null}</div>
     </div>
     {apri && <div className="correggi">
-      <label className="campo">{conf ? `Prezzo della confezione da ${conf}` : p.sfuso ? `Prezzo al ${per}` : 'Prezzo'}<span className="euro-campo"><input inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} /><b>€</b></span></label>
+      <label className="campo">{conf ? `Prezzo della confezione da ${conf}` : p.sfuso ? `Prezzo al ${per}` : 'Prezzo'}<span className="euro-campo"><input inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} autoFocus onFocus={(e) => e.target.select()} /><b>€</b></span></label>
       <div className="scelte"><button type="button" aria-pressed={off} onClick={() => setOff(!off)}>{off ? '✓ ' : ''}In offerta</button></div>
       {off && <DateOfferta dal={dal} al={al} setDal={setDal} setAl={setAl} />}
       {err && <div className="errore">{err}</div>}

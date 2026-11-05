@@ -10,7 +10,7 @@ import { Benvenuto } from './vicini.jsx';
 import { InstallaApp } from './installa.jsx';
 import { ComeFunziona, ComeScegliamo } from './come.jsx';
 import { Offerte, MieiPreferiti } from './offerte.jsx';
-import { StatoOrari, avvisiOrari, useAdesso } from './orari.jsx';
+import { StatoOrari } from './orari.jsx';
 import { Spese, Spesa } from './spese.jsx';
 import { Statistiche } from './statistiche.jsx';
 import { MandaVolantino, GestioneVolantini } from './volantini.jsx';
@@ -372,9 +372,10 @@ function Ricerca({ onAggiungi, onAvviso, onModulo, inMezzo = null }) {
         {q && <button type="button" className="cancella" aria-label="Cancella" onClick={pulisci}><Icona n="chiudi" d={22} /></button>}</label>
     </form>
     {q.trim().length >= 2 && <ul className="suggeriti" aria-label="Prodotti trovati">
-      {(sug || []).map((x, n) => <li key={`${x.tipo}-${x.prodotto_id || x.voce_id || x.ean}-${n}`} className={x.prodotto_id ? 'sug-prodotto' : ''}>{x.prodotto_id ? <RigaSuggerita x={x} attesa={attesa} prendi={prendi} /> : <button type="button" disabled={attesa} onClick={() => prendi(x)}>
+      {(sug || []).map((x, n) => <li key={`${x.tipo}-${x.prodotto_id || x.voce_id || x.ean}-${n}`} className={x.prodotto_id ? 'sug-prodotto' : x.tipo === 'voce' ? 'sug-voce' : ''}>{x.prodotto_id ? <RigaSuggerita x={x} attesa={attesa} prendi={prendi} /> : <button type="button" disabled={attesa} onClick={() => prendi(x)}>
         {x.foto ? <img src={x.foto} alt="" loading="lazy" /> : <span className="segno" aria-hidden="true">{x.tipo === 'voce' ? <Icona n="lista" d={24} /> : <Icona n="negozio" d={24} />}</span>}
-        <span className="testo"><b>{x.nome}</b>
+        {/* 0.72: la riga generica («Mandarini, qualsiasi») è sempre ben staccata, per chi non vuole scegliere il prodotto adesso */}
+        <span className="testo">{x.tipo === 'voce' && <span className="bolla-libera">Scegli al supermercato</span>}<b>{x.nome}</b>
           <span>{x.tipo === 'voce' ? 'Qualsiasi: scegli dopo quale' : 'Dal catalogo, ancora senza prezzo'}</span></span>
         <span className="piu" aria-hidden="true">+</span>
       </button>}</li>)}
@@ -429,40 +430,81 @@ function RisultatoVoce({ r, onVoce, onProdotto }) {
 // ---------- dove conviene comprare ----------
 function Giro({ annuncio, tutto = false }) {
   const c = useDati(tutto ? '/api/calcolo?tutto=1' : '/api/calcolo');
+  // 0.72: si spunta anche qui (vale per la lista); quello che non trovi lo lasci e resta in lista per la prossima volta
+  const [presi, setPresi] = useState(() => new Set()); const [nonCera, setNonCera] = useState(() => new Set(nonTrovatiOggi()));
+  const [msg, setMsg] = useState('');
   if (c.errore) return <div className="errore">{c.errore}</div>;
   if (!c.dati) return <p className="muto">Confronto i supermercati…</p>;
   const r = c.dati; const [prima, ...altre] = r.soluzioni;
+  const spunta = async (riga) => {
+    const nuovo = !presi.has(riga.id); const p2 = new Set(presi); if (nuovo) p2.add(riga.id); else p2.delete(riga.id); setPresi(p2); setMsg('');
+    try { await api(`/api/lista/${riga.id}?breve=1`, { metodo: 'PUT', corpo: { preso: nuovo } }); dispatchEvent(new Event('lista-cambiata')); } catch (e) { setMsg(e.message); }
+  };
+  const nonTrovato = (riga) => {
+    const n2 = new Set(nonCera); if (n2.has(riga.id)) n2.delete(riga.id); else { n2.add(riga.id); setMsg(`«${riga.voce}» resta in lista: lo prendi la prossima volta.`); }
+    setNonCera(n2); mem.scrivi('non-trovati', { giorno: oggiIso(), righe: [...n2] });
+  };
   return (<>
-    <div className="intesta"><h1>{tutto ? 'Com\'è andata la spesa' : 'Il giro della spesa'}</h1>{r.righe.length > 0 && <p>Per {r.righe.length === 1 ? '1 cosa' : `${r.righe.length} cose`} della tua lista</p>}</div>
+    {!tutto && <a className="b tenue-marca torna-lista torna-su" href="#lista"><Icona n="indietro" d={22} /> Torna alla lista e aggiungi</a>}
+    <div className="intesta"><h1>{tutto ? 'Com\'è andata la spesa' : 'Il giro della spesa'}</h1>{r.righe.length > 0 && <p>{tutto ? `Per ${r.righe.length === 1 ? '1 cosa' : `${r.righe.length} cose`} della tua lista` : 'Ogni supermercato ha la sua lista: vai da uno oggi e dagli altri quando vuoi. Spunta quello che prendi; quello che non trovi resta in lista.'}</p>}</div>
     {!r.righe.length && !tutto && <div className="vuota"><p>La lista è vuota: prima scrivi o detta cosa ti serve.</p><a className="b pieno grande" href="#lista">Vai alla lista</a></div>}
+    {msg && <div className="ok" role="status">{msg}</div>}
 
     {r.avvisi.map((a, i) => <div key={i} className="avviso">{a}</div>)}
     {!r.soluzioni.length && r.righe.length > (r.fuoriGiro || []).length + (r.liberi || []).length && <div className="avviso">Non ci sono ancora prezzi per le cose della tua lista.</div>}
     {!r.soluzioni.length && (r.fuoriGiro || []).length > 0 && <div className="fornitore-box"><b>Da comprare a parte, dal fornitore</b>{r.fuoriGiro.map((f) => <span key={f.id}>{f.voce}: {f.prodotto} da <b>{f.fornitore}</b>, {euro(f.prezzo)}</span>)}</div>}
-    {prima && <Soluzione s={prima} prima orari={!tutto} fuori={r.fuoriGiro || []} />}
+    {prima && (tutto ? <Soluzione s={prima} prima fuori={r.fuoriGiro || []} />
+      : <>
+        {prima.negozi.map((n) => <Negozio key={n.catena} n={n} presi={presi} nonCera={nonCera} onSpunta={spunta} onNonCera={nonTrovato} />)}
+        {prima.mancanti.filter((m) => !(r.fuoriGiro || []).some((f) => f.id === m.id)).length > 0 && <div className="avviso">Senza un prezzo nei tuoi supermercati: {prima.mancanti.filter((m) => !(r.fuoriGiro || []).some((f) => f.id === m.id)).map((m) => m.voce).join(', ')}.</div>}
+        {(r.fuoriGiro || []).length > 0 && <div className="fornitore-box"><b>Da comprare a parte, dal fornitore</b>{r.fuoriGiro.map((f) => <span key={f.id}>{f.voce}: {f.prodotto} da <b>{f.fornitore}</b>, {euro(f.prezzo)}</span>)}</div>}
+        {prima.negozi.length > 1 && <p className="totale-giro">In tutto, se prendi tutto: <Cartellino n={prima.spesa} /></p>}
+      </>)}
     {!tutto && (r.liberi || []).length > 0 && <div className="fornitore-box liberi-box"><b>Da prendere dove vuoi, scegli tu al supermercato</b><span>{r.liberi.map((x) => x.voce).join(', ')}</span></div>}
     {prima && r.risparmio && (r.risparmio.unSolo || r.risparmio.altrove) && <Risparmio r={r} prima={prima} />}
     {r.giudizi && <Giudizi g={r.giudizi} />}
     {altre.length > 0 && <details className="altre"><summary>Altre possibilità ({altre.length})</summary>{altre.map((s, i) => <Soluzione key={i} s={s} />)}</details>}
     {r.singoli.length > 1 && <details className="altre"><summary>Tutto in un negozio solo</summary>
       <ul className="singoli">{r.singoli.map((x) => <li key={x.catena}><div><b>{x.catena}</b><span>{x.mancanti ? `${x.mancanti === 1 ? 'manca 1 cosa' : `mancano ${x.mancanti} cose`}` : 'c\'è tutto'}</span></div><Cartellino n={x.spesa} /></li>)}</ul></details>}
-    {r.impostazioni && <p className="muto piccolo">La strada conta {euro(r.impostazioni.euro_km)} al km. Un negozio in più viene proposto solo se fa risparmiare almeno {euro(r.impostazioni.soglia_negozio)}.</p>}
+    {r.impostazioni && <p className="muto piccolo">Per dividere la spesa tra i supermercati conto anche la strada ({euro(r.impostazioni.euro_km)} al km): un negozio in più viene proposto solo se fa risparmiare almeno {euro(r.impostazioni.soglia_negozio)}.</p>}
+    {!tutto && <a className="b torna-lista torna-giu" href="#lista"><Icona n="indietro" d={22} /> Torna alla lista e aggiungi</a>}
     <Annuncio a={annuncio} />
   </>);
 }
-function Soluzione({ s, prima = false, orari = false, fuori = [] }) {
-  const ri = s.rispetto; const adesso = useAdesso();
+// le cose segnate «non c'era» valgono solo per oggi: domani si riprova
+const oggiIso = () => new Date().toLocaleDateString('sv-SE');
+function nonTrovatiOggi() { const x = mem.leggi('non-trovati', null); return x && x.giorno === oggiIso() ? x.righe || [] : []; }
+const strada = (n) => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(n.lat != null ? `${n.lat},${n.lng}` : `${n.indirizzo || n.nome || n.catena}${n.citta ? `, ${n.citta}` : ''}`)}`;
+// 0.72: un supermercato del giro, da fare quando vuoi: orario di chiusura in una riga, la sua lista da spuntare, «Portami qui»
+function Negozio({ n, presi, nonCera, onSpunta, onNonCera }) {
+  const fatti = n.righe.filter((x) => presi.has(x.riga.id)).length;
+  return <section className="soluzione negozio-giro-carta">
+    <div className="sol-testa">
+      <div><h2>{n.catena}</h2>{(n.indirizzo || n.nome) && <p>{n.indirizzo || n.nome}{n.indirizzo && n.citta ? `, ${n.citta}` : ''}</p>}</div>
+      <Cartellino n={n.subtotale} grande />
+    </div>
+    <StatoOrari testo={n.orari} />
+    <ul className="acquisti da-spuntare">{n.righe.map((x) => { const preso = presi.has(x.riga.id); const manca = !preso && nonCera.has(x.riga.id);
+      return <li key={x.riga.id} className={`${preso ? 'preso' : ''}${manca ? ' non-cera' : ''}`}>
+        <button type="button" className="spunta" role="checkbox" aria-checked={preso} aria-label={`${x.riga.voce}: ${preso ? 'preso' : 'da prendere'}`} onClick={() => onSpunta(x.riga)}>{preso ? <Icona n="spunta" d={28} /> : null}</button>
+        <div><b>{x.riga.voce}</b><span>{x.confezioni ? `${x.confezioni} ${x.confezioni === 1 ? 'confezione' : 'confezioni'}` : quanto(x.riga.quantita, x.riga.unita)}: {x.prodotto}</span>
+          <span className="etichette"><Semaforo q={x.qualita} piccolo sempre /><Etichette p={x} />{x.offerta && <span className="pill offerta">offerta</span>}<StatoPrezzo s={x.stato} al={x.valido_al} /></span>
+        </div>
+        <Cartellino n={x.costo} />
+        {!preso && <button type="button" className="link non-cera-tasto" onClick={() => onNonCera(x.riga)}>{manca ? 'Rimetti: l\'ho trovato' : 'Non c\'era: resta in lista'}</button>}</li>; })}</ul>
+    {fatti > 0 && <p className="muto">{fatti === n.righe.length ? `Da ${n.catena} hai preso tutto.` : `Presi ${fatti} su ${n.righe.length}.`}</p>}
+    <a className="b contorno" href={strada(n)} target="_blank" rel="noopener"><Icona n="mappa" /> Portami da {n.catena}</a>
+  </section>;
+}
+function Soluzione({ s, prima = false, fuori = [] }) {
   return <section className={`soluzione${prima ? ' prima' : ''}`}>
     <div className="sol-testa">
-      <div><h2>{s.catene.join(' e ')}</h2>{s.km != null && <p>{num(s.km, 1)} km di strada, circa {s.minuti} minuti</p>}</div>
+      <div><h2>{s.catene.join(' e ')}</h2></div>
       <Cartellino n={s.spesa} grande />
     </div>
-    {orari && avvisiOrari(s.negozi, adesso, s.minuti).map((a, i) => <div key={i} className="avviso orari-avviso"><Icona n="orologio" /> {a}</div>)}
-    {ri && <p className={ri.risparmio > 0 ? 'ok' : 'avviso'}>{ri.recupera > 0 ? `Trovi ${ri.recupera === 1 ? '1 cosa che' : `${ri.recupera} cose che`} da ${ri.catena} non ${ri.recupera === 1 ? 'c\'è' : 'ci sono'}. ` : ''}{ri.risparmio > 0 ? `Risparmi ${euro(ri.risparmio)} rispetto a comprare tutto da ${ri.catena}` : `Spendi ${euro(-ri.risparmio)} in più che comprare tutto da ${ri.catena}`}{ri.minuti ? `, con ${ri.minuti} minuti di strada in più.` : '.'}</p>}
     {s.negozi.map((n, k) => <div key={n.catena} className="negozio">
       {s.negozi.length > 1 && <h3>{k + 1}. {n.catena}</h3>}
       {(n.indirizzo || n.nome) && <p className="muto">{n.indirizzo || n.nome}{n.indirizzo && n.citta ? `, ${n.citta}` : ""}</p>}
-      {orari && <StatoOrari testo={n.orari} />}
       <ul className="acquisti">{n.righe.map((x) => <li key={x.riga.id}>
         <div><b>{x.riga.voce}</b><span>{x.confezioni ? `${x.confezioni} ${x.confezioni === 1 ? 'confezione' : 'confezioni'}` : quanto(x.riga.quantita, x.riga.unita)}: {x.prodotto}</span>
           <span className="etichette"><Semaforo q={x.qualita} piccolo sempre /><Etichette p={x} />{x.offerta && <span className="pill offerta">offerta</span>}<StatoPrezzo s={x.stato} al={x.valido_al} /></span></div>
@@ -471,7 +513,6 @@ function Soluzione({ s, prima = false, orari = false, fuori = [] }) {
     </div>)}
     {s.mancanti.filter((m) => !fuori.some((f) => f.id === m.id)).length > 0 && <div className="avviso">Non trovato con queste scelte: {s.mancanti.filter((m) => !fuori.some((f) => f.id === m.id)).map((m) => m.voce).join(', ')}.</div>}
     {prima && fuori.length > 0 && <div className="fornitore-box"><b>Da comprare a parte, dal fornitore</b>{fuori.map((f) => <span key={f.id}>{f.voce}: {f.prodotto} da <b>{f.fornitore}</b>, {euro(f.prezzo)}</span>)}</div>}
-    {s.link && <a className="b pieno grande" href={s.link} target="_blank" rel="noopener"><Icona n="mappa" /> Apri la strada su Google Maps</a>}
   </section>;
 }
 

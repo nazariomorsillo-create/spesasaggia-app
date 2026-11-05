@@ -56,14 +56,16 @@ export function Scegli({ id, onCambiata }) {
       {d.scelta?.automatica && <div className="scelta-fatta"><Icona n="spunta" d={22} /><div><b>Adesso: decido io per te</b><span>prendo il più conveniente {r.qualita !== 'qualsiasi' ? `tra quelli ${QUALITA.find(([k]) => k === r.qualita)?.[1].toLowerCase()}` : ''}</span></div></div>}
       {err && <div className="errore">{err}</div>}
 
-      <section className={`carta libera-scelta${d.scelta?.libera ? ' attiva' : ''}`}>
-        <h2>Lo scegli tu al supermercato</h2>
-        <p className="muto">In lista resta solo «{r.voce}»: quale prendere lo decidi quando sei lì. Se c'è un'offerta te la segnalo nella lista.</p>
-        {d.scelta?.libera ? <p className="ok">Scelto: «{r.voce}», lo scegli tu al supermercato.</p> : <button type="button" className="b grande pieno-verde" disabled={attesa} onClick={lascia}>Lascia «{r.voce}», scelgo al supermercato</button>}
+      {/* 0.72 (Nazario, 04/11): prima quante confezioni, poi solo il pulsante verde, poi «Oppure…» e sotto il prodotto più conveniente.
+          Se «lo scegli tu al supermercato» è già la scelta, il pulsante verde riporta alla lista (la quantità si salva da sola). */}
+      <Quantita r={r} p={d.principale?.prodotto} onCambia={cambiaQuantita} />
+
+      <section className={`libera-scelta${d.scelta?.libera ? ' attiva' : ''}`}>
+        {d.scelta?.libera
+          ? <a className="b grande pieno-verde" href="#lista"><Icona n="spunta" d={22} /> Va bene così, torna alla lista</a>
+          : <button type="button" className="b grande pieno-verde" disabled={attesa} onClick={lascia}>Lascia «{r.voce}», scelgo al supermercato</button>}
         {d.principale && <p className="in-alternativa">Oppure, in alternativa, scegli qui sotto il prodotto più conveniente.</p>}
       </section>
-
-      <Quantita r={r} p={d.principale?.prodotto} onCambia={cambiaQuantita} />
 
       {saggiaPrima && consiglio && <section className="consiglio">
         <div className="riga" style={{ gap: 10 }}><span className="pill consiglio-pill">La scelta saggia</span>{consiglio.etichette.slice(1).map((t, n) => <span key={t} className={`pill ${PILL_ALT[consiglio.tipi[n + 1]] || 'forte'}`}>{t}</span>)}</div>

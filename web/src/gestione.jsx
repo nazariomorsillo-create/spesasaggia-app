@@ -1,6 +1,6 @@
 // Gestione (per chi carica prezzi e prodotti): rilevazione, schede, confronto, negozi, scontrini, impostazioni, pubblicità.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api, useDati, euro, num, data, UNITA, QUALITA, REPARTI, TIPI, conVirgola, Etichette, StatoPrezzo, mem, ScattaFoto, ScegliCatena, FormatoConfezione, FORMATO_VUOTO, datiFormato, numeroDa, Semaforo, Icona, riduciFoto, quanto } from './base.jsx';
+import { api, useDati, euro, num, data, UNITA, QUALITA, REPARTI, TIPI, conVirgola, Etichette, StatoPrezzo, mem, ScattaFoto, ScegliCatena, FormatoConfezione, FORMATO_VUOTO, datiFormato, numeroDa, Semaforo, Icona, riduciFoto, quanto, Cartellino } from './base.jsx';
 
 function CercaVoce({ onScelta, etichetta = 'Cosa compri?', voci, ricaricaVoci }) {
   const [q, setQ] = useState(''); const [nuova, setNuova] = useState(null); const [err, setErr] = useState('');
@@ -463,16 +463,39 @@ function Confronto({ id, stato }) {
         <div className="scelte">{[['', 'Pezzi'], ['lavaggio', 'Lavaggi'], ['rotolo', 'Rotoli'], ['capsula', 'Capsule'], ['foglio', 'Fogli'], ['salvietta', 'Salviette']].map(([k, t]) => <button type="button" key={k} aria-pressed={(voce.pezzo || '') === k} onClick={async () => { await api(`/api/voci/${voce.id}`, { metodo: 'PUT', corpo: { pezzo: k } }); c.ricarica(); }}>{t}</button>)}</div>
         <span className="muto piccolo">Per i prodotti per la casa: il confronto si fa al lavaggio, al rotolo… Il formato di ogni prodotto va scritto in quei pezzi (es. 40 lavaggi).</span></div>}
       {prodotti.map((p) => <div key={p.id} className="negozio-giro">
-        <div className="riga" style={{ justifyContent: 'space-between' }}><a href={`#prodotto/${p.id}`}><b>{p.nome}</b></a><button className="b piccolo" onClick={() => setModifica(p)}>Modifica</button></div>
+        {/* 0.72: il nome apre la scheda; sotto due pulsanti chiari. «Modifica» grigio in alto a destra apriva il modulo in fondo alla pagina e sembrava non fare niente */}
+        <a href={`#prodotto/${p.id}`}><b>{p.nome}</b></a>
         <div className="riga" style={{ gap: 8, flexWrap: 'wrap' }}><Semaforo q={p.qualita} piccolo sempre /><Etichette p={{ ...p, confrontabile: !!p.sfuso || p.quantita > 0 }} />{p.origine === '' && <span className="muto piccolo">Origine da indicare</span>}</div>
-        {p.prezzi.length ? <div className="scorre"><table className="tab"><thead><tr><th>Catena</th><th>Prezzo</th><th>Al {voce.unita}</th><th>Rilevato</th><th></th></tr></thead><tbody>
-          {p.prezzi.map((x) => <tr key={x.id}><td>{x.catena}</td><td>{euro(x.prezzo)}{x.offerta ? <> <span className="pill offerta">offerta</span></> : null}</td><td>{euro(x.unitario)}</td><td>{data(x.rilevato_il)}{x.valido_al ? ` (${data(x.valido_dal)}–${data(x.valido_al)})` : ''}</td>
-            <td><StatoPrezzo s={x.stato} /> <button className="b rosso piccolo" aria-label="Cancella il prezzo" onClick={async () => { if (confirm('Cancello questo prezzo?')) { await api(`/api/prezzi/${x.id}`, { metodo: 'DELETE' }); c.ricarica(); } }}>✕</button></td></tr>)}
-        </tbody></table></div> : <span className="muto piccolo">Nessun prezzo rilevato.</span>}
+        {p.prezzi.length ? <ul className="prezzi-scheda">{p.prezzi.map((x) => <RigaPrezzoTab key={`${x.id}-${x.prezzo}-${x.offerta}`} x={x} unita={voce.unita} onFatto={() => c.ricarica()} />)}</ul> : <span className="muto piccolo">Nessun prezzo rilevato.</span>}
+        <div className="confronto-azioni">
+          <a className="b piccolo contorno" href={`#prodotto/${p.id}/prezzo`}>Aggiungi un prezzo</a>
+          <button type="button" className="b piccolo" onClick={() => setModifica(modifica?.id === p.id ? null : p)}>Modifica la scheda</button>
+        </div>
+        {modifica?.id === p.id && <section className="carta"><h2>Modifica la scheda</h2><FormProdotto iniziale={{ ...modifica, voce: voce.nome, unita: voce.unita, reparto: voce.reparto }} voci={voci} catene={catene.dati} onSalvato={() => { setModifica(null); c.ricarica(); }} onAnnulla={() => setModifica(null)} /></section>}
       </div>)}
     </section>
-    {modifica && <section className="carta"><h2>Modifica prodotto</h2><FormProdotto iniziale={{ ...modifica, voce: voce.nome, unita: voce.unita, reparto: voce.reparto }} voci={voci} catene={catene.dati} onSalvato={() => { setModifica(null); c.ricarica(); }} onAnnulla={() => setModifica(null)} /></section>}
   </>;
+}
+// 0.72: una riga di prezzo da correggere sul posto: tocchi «Correggi», scrivi il prezzo, salvi (un solo prezzo per supermercato, quello giusto)
+function RigaPrezzoTab({ x, unita, onFatto }) {
+  const [apri, setApri] = useState(false); const [v, setV] = useState(String(x.prezzo).replace('.', ',')); const [off, setOff] = useState(!!x.offerta); const [err, setErr] = useState('');
+  const salva = async () => { setErr(''); try { await api(`/api/prezzi/${x.id}`, { metodo: 'PUT', corpo: { prezzo: v, offerta: off, valido_dal: off ? x.valido_dal || '' : '', valido_al: off ? x.valido_al || '' : '' } }); setApri(false); onFatto(); } catch (e) { setErr(e.message); } };
+  return <li className={apri ? 'aperto' : ''}>
+    <div className="riga-prezzo">
+      <div><b>{x.catena}</b><span>rilevato il {data(x.rilevato_il)}{x.valido_al ? `, offerta ${data(x.valido_dal)}–${data(x.valido_al)}` : ''}</span>
+        <span className="etichette">{x.offerta ? <span className="pill offerta">offerta</span> : null}<StatoPrezzo s={x.stato} /></span>
+      </div>
+      <div className="dx"><Cartellino n={x.prezzo} /><span className="muto piccolo">= {euro(x.unitario)} al {unita}</span></div>
+    </div>
+    {!apri && <div className="confronto-azioni riga-tasti-prezzo"><button type="button" className="b piccolo contorno correggi-prezzo" onClick={() => { setV(String(x.prezzo).replace('.', ',')); setOff(!!x.offerta); setErr(''); setApri(true); }}>Correggi il prezzo</button>
+      <button type="button" className="b rosso piccolo correggi-prezzo" aria-label="Cancella il prezzo" onClick={async () => { if (confirm('Cancello questo prezzo?')) { await api(`/api/prezzi/${x.id}`, { metodo: 'DELETE' }); onFatto(); } }}>✕</button></div>}
+    {apri && <div className="correggi">
+      <label className="campo">Prezzo da {x.catena}<span className="euro-campo"><input inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} autoFocus onFocus={(e) => e.target.select()} /><b>€</b></span></label>
+      <div className="scelte"><button type="button" aria-pressed={off} onClick={() => setOff(!off)}>{off ? '✓ ' : ''}In offerta</button></div>
+      {err && <div className="errore">{err}</div>}
+      <div className="riga"><button type="button" className="b pieno" onClick={salva}>Salva</button><button type="button" className="b" onClick={() => setApri(false)}>Annulla</button></div>
+    </div>}
+  </li>;
 }
 
 // ---------- altro: negozi, scontrini, impostazioni, pubblicità ----------
