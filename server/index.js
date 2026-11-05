@@ -712,7 +712,8 @@ app.put('/api/prezzi/:id', async (req) => {
   const x = prezzoModificabile(req, req.params.id); const b = req.body || {};
   const p = prodottoCompleto(x.prodotto_id);
   const prezzo = b.prezzo !== undefined ? numero(b.prezzo, { min: 0.01, max: 9999, nome: 'Il prezzo' }) : x.prezzo;
-  const rilevato = DATA.test(b.rilevato_il || '') ? b.rilevato_il : x.rilevato_il;
+  // 0.72: un prezzo corretto è un prezzo visto oggi, quindi prende la data di oggi
+  const rilevato = DATA.test(b.rilevato_il || '') ? b.rilevato_il : b.prezzo !== undefined ? oggi() : x.rilevato_il;
   const offerta = b.offerta !== undefined ? (b.offerta ? 1 : 0) : x.offerta;
   // il periodo dell'offerta: si cambia solo se viene mandato; se l'offerta viene tolta, cade anche il periodo (salvo ortofrutta)
   let dal = b.valido_dal !== undefined ? (DATA.test(b.valido_dal || '') ? b.valido_dal : null) : x.valido_dal;

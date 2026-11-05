@@ -5103,3 +5103,14 @@ a.b.pieno-verde {
 .riga-tasti-prezzo { margin-top: -4px; }
 .riga-tasti-prezzo .correggi-prezzo { margin-top: 0; }
 .altro-super { margin-top: 10px; }
+/* 0.72: foto nel giro (come nella lista) e cose generiche */
+.acquisti.da-spuntare li > .spunta { grid-column: 1; grid-row: 1; }
+.acquisti.da-spuntare li > .giro-foto { grid-column: 1; grid-row: 2 / span 2; justify-self: center; width: 48px; height: 48px; object-fit: contain; border-radius: 8px; background: #fff; }
+.acquisti.da-spuntare li.libera-giro > .libera-azioni { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.acquisti.da-spuntare li.libera-giro { border-top: 1px dashed var(--riga-foglio, #ddd); }
+.sposta-libera { font-size: 15px; }
+.acquisti.da-spuntare li > div { grid-row: 1 / span 2; }
+.acquisti.da-spuntare li > .giro-foto { grid-row: 2; align-self: start; }
+.acquisti.da-spuntare li > .cartellino { grid-row: 3; }
+.acquisti.da-spuntare li > .non-cera-tasto { grid-row: 4; }
+.acquisti.da-spuntare li.libera-giro > .libera-azioni { grid-row: 3; }

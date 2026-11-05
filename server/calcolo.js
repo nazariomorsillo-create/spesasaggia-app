@@ -186,7 +186,7 @@ export async function calcola(db, { data = oggi(), famiglia_id = null, s = impos
     return {
       catene: ordine.map((n) => catene.find((c) => c.id === n.catena_id).nome),
       negozi: ordine.map((n) => ({
-        catena: catene.find((c) => c.id === n.catena_id).nome, indirizzo: n.indirizzo, citta: n.citta, nome: n.nome || "", id: n.id, orari: n.orari || "",
+        catena: catene.find((c) => c.id === n.catena_id).nome, catena_id: n.catena_id, indirizzo: n.indirizzo, citta: n.citta, nome: n.nome || "", id: n.id, orari: n.orari || "",
         righe: perCatena.get(n.catena_id).map(acquisto), subtotale: r2(perCatena.get(n.catena_id).reduce((t, x) => t + x.costo, 0)),
       })),
       spesa: r2(spesa), km: g ? Math.round(g.km * 10) / 10 : null, minuti: g ? Math.round(mappe.minutiAuto(g.km) + s.sosta * insieme.length) : null,
@@ -205,6 +205,21 @@ export async function calcola(db, { data = oggi(), famiglia_id = null, s = impos
     ...x, punteggio: undefined,
     rispetto: migliore1 && x !== migliore1 ? { catena: migliore1.catene[0], risparmio: r2(migliore1.totale - x.totale), minuti: x.minuti != null && migliore1.minuti != null ? x.minuti - migliore1.minuti : null, recupera: migliore1.mancanti.length - x.mancanti.length } : null,
   }));
+  // 0.72: le righe generiche («scelgo al supermercato») vanno nel supermercato del giro dove la voce costa meno;
+  // se non c'è nessun prezzo, nel negozio dove si comprano più cose. Il prezzo è solo indicativo e non entra nel conto.
+  const righeLibere = tutteRighe.filter(libera);
+  if (righeLibere.length && soluzioni.length) {
+    const tl = miglioriPerCatena(db, righeLibere, data, s, catene_ids).tabella;
+    for (const sol of soluzioni) {
+      for (const n of sol.negozi) n.liberi = [];
+      const principale = [...sol.negozi].sort((a, b) => b.righe.length - a.righe.length)[0];
+      for (const r of righeLibere) {
+        let best = null; let dove = null;
+        for (const n of sol.negozi) { const v = tl.get(r.id)?.get(n.catena_id); if (v && (!best || v.costo < best.costo)) { best = v; dove = n; } }
+        (dove || principale).liberi.push({ riga: rigaCorta(r), da: best ? best.costo : null, foto: best?.prodotto.foto || '', prezzi: Object.fromEntries(sol.negozi.map((n) => [n.catena, tl.get(r.id)?.get(n.catena_id)?.costo ?? null])) });
+      }
+    }
+  }
   // la più economica in assoluto (anche se la strada o la soglia la fanno scartare): serve per dire quanto si risparmierebbe altrove
   const minMancanti = Math.min(...tutte.map((x) => x.mancanti.length), Infinity);
   const piuEconomica = tutte.filter((x) => x.mancanti.length === minMancanti).sort((a, b) => a.totale - b.totale)[0] || null;
