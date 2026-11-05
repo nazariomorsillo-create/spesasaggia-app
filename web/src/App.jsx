@@ -510,7 +510,7 @@ function Negozio({ n, liberi = [], propLib, presi, nonCera, onSpunta, onNonCera 
         {!preso && <button type="button" className="link non-cera-tasto" onClick={() => onNonCera(x.riga)}>{manca ? 'Rimetti: l\'ho trovato' : 'Non c\'era: resta in lista'}</button>}</li>; })}
       {liberi.map((l) => <RigaLibera key={l.riga.id} l={l} qui={n.catena_id} {...propLib} />)}</ul>
     {fatti > 0 && <p className="muto">{fatti === tutte.length ? `Da ${n.catena} hai preso tutto.` : `Presi ${fatti} su ${tutte.length}.`}</p>}
-    <a className="b contorno" href={strada(n)} target="_blank" rel="noopener"><Icona n="mappa" /> Portami da {n.catena}</a>
+    <a className="b pieno-verde portami" href={strada(n)} target="_blank" rel="noopener"><Icona n="mappa" /> Portami da {n.catena}</a>
   </section>;
 }
 // 0.74: una cosa generica nel giro: la scegli tu sul banco, nel supermercato che hai scelto tu (lo puoi cambiare); il prezzo è indicativo

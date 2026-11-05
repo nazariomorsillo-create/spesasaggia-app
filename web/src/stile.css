@@ -5116,3 +5116,12 @@ a.b.pieno-verde {
 .acquisti.da-spuntare li.libera-giro > .libera-azioni { grid-row: 3; }
 .dove-libera { display: flex; flex-direction: column; gap: 10px; }
 .dove-libera > b { font-size: 20px; }
+/* 0.75 (Nazario, 05/11): ogni supermercato del giro è un riquadro azzurro chiaro ben visibile; «Portami da…» verde pieno */
+.negozio-giro-carta { background: #eaf4fd; border: 2px solid #a9cff1; box-shadow: 0 2px 0 #cfe4f8; }
+.negozio-giro-carta .sol-testa h2 { color: var(--blu-scuro); }
+.negozio-giro-carta .acquisti.da-spuntare li { border-top-color: #c4dcf2; }
+.negozio-giro-carta .acquisti.da-spuntare li.libera-giro { border-top-color: #b3d1ee; }
+.negozio-giro-carta .scelte button, .negozio-giro-carta .spunta { background: #fff; }
+.b.pieno-verde.portami { color: #fff; background: var(--verde-scuro); border-color: var(--verde-scuro); justify-content: center; }
+.b.pieno-verde.portami svg { color: #fff; }
+.b.pieno-verde.portami { box-shadow: 0 3px 0 #1d5e1a; }
