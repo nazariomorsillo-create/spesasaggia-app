@@ -1,0 +1,45 @@
+{
+ "id": "/",
+ "name": "Spesa Saggia",
+ "short_name": "Spesa Saggia",
+ "description": "La lista della spesa che si detta a voce e ti dice dove costa meno.",
+ "lang": "it",
+ "dir": "ltr",
+ "start_url": "/",
+ "scope": "/",
+ "display": "standalone",
+ "orientation": "portrait",
+ "background_color": "#FFFFFF",
+ "theme_color": "#FFFFFF",
+ "categories": [
+  "shopping",
+  "food",
+  "lifestyle"
+ ],
+ "icons": [
+  {
+   "src": "/icona.svg",
+   "sizes": "any",
+   "type": "image/svg+xml",
+   "purpose": "any"
+  },
+  {
+   "src": "/icona-192.png",
+   "sizes": "192x192",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "/icona-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "/icona-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ]
+}
