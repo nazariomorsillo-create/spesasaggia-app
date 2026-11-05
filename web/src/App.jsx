@@ -551,6 +551,27 @@ function Soluzione({ s, prima = false, fuori = [] }) {
   </section>;
 }
 
+// 0.76: foto automatiche dei prodotti (Open Food Facts): quante mancano e «cerca adesso»
+function FotoAutomatiche() {
+  const c = useDati('/api/foto-automatiche'); const [attesa, setAttesa] = useState(false); const [esito, setEsito] = useState(''); const [err, setErr] = useState('');
+  const cerca = async (tutti) => { setErr(''); setEsito(''); setAttesa(true);
+    try { const r = await api('/api/foto-automatiche', { metodo: 'POST', corpo: { tutti } }); setEsito(r.guardati ? `Guardati ${r.guardati} prodotti senza foto: ${r.trovate === 1 ? 'trovata 1 foto' : `trovate ${r.trovate} foto`}.` : 'Nessun prodotto da guardare adesso: sono già stati cercati in questo mese.'); c.ricarica(); }
+    catch (e) { setErr(e.message); } finally { setAttesa(false); } };
+  const d = c.dati;
+  return <>
+    <div className="intesta"><h1>Foto automatiche</h1><p>Ogni mezz'ora l'app cerca la foto dei prodotti che non ce l'hanno su Open Food Facts, l'archivio libero dei prodotti: con il codice a barre, oppure con nome, marca e formato quando corrispondono del tutto. Frutta, verdura e sfusi restano senza.</p></div>
+    {c.errore && <div className="errore">{c.errore}</div>}
+    {d && <section className="carta">
+      <p><b>{d.senza}</b> prodotti ancora senza foto · <b>{d.automatiche}</b> foto prese in automatico · <b>{d.scartate}</b> segnate «non è questa»</p>
+      {!d.catalogo && <div className="avviso">Sul server manca il catalogo di Open Food Facts: le foto si trovano solo con il codice a barre. Per cercarle anche per nome serve il catalogo (si prepara con «node server/catalogo.js»).</div>}
+      {err && <div className="errore">{err}</div>}{esito && <div className="ok" role="status">{esito}</div>}
+      <div className="riga"><button type="button" className="b pieno" disabled={attesa} onClick={() => cerca(false)}>{attesa ? 'Cerco…' : 'Cerca le foto adesso'}</button>
+        <button type="button" className="b" disabled={attesa} onClick={() => cerca(true)}>Riprova anche quelli già cercati</button></div>
+      <p className="muto piccolo">Le foto di Open Food Facts hanno licenza CC BY-SA: sotto ogni foto c'è scritto da dove viene. Chiunque può toccare «Non è questa foto» se è sbagliata, e quella foto non torna più.</p>
+    </section>}
+  </>;
+}
+
 // ---------- altro: preferenze e gestione ----------
 function Altro({ stato, ricaricaStato, sezione }) {
   if (sezione === 'negozi') return <Negozi stato={stato} />;
@@ -563,6 +584,7 @@ function Altro({ stato, ricaricaStato, sezione }) {
   if (sezione === 'statistiche') return <><Torna a="#altro" t="Altro" /><Statistiche /></>;
   if (sezione === 'volantini') return <><Torna a="#altro" t="Altro" /><GestioneVolantini /></>;
   if (sezione === 'doppioni') return <><Torna a="#altro" t="Altro" /><SchedeDoppie /></>;
+  if (sezione === 'foto') return <><Torna a="#altro" t="Altro" /><FotoAutomatiche /></>;
   const c = stato.conti; const u = stato.utente;
   return <>
     <div className="intesta"><h1>Altro</h1><p>Ciao {u.nome}</p></div>
@@ -585,6 +607,7 @@ function Altro({ stato, ricaricaStato, sezione }) {
     {u.admin && <>
       <h2 className="titoletto">Gestione</h2>
       <nav className="menu" aria-label="Gestione">
+        <a href="#altro/foto"><b>Foto automatiche</b><span>Le foto dei prodotti prese da Open Food Facts</span></a>
         <a href="#altro/doppioni"><b>Schede doppie{c.doppioni ? ` (${c.doppioni} da controllare)` : ''}</b><span>Lo stesso prodotto entrato due volte (scontrino, volantino, codice a barre)</span></a>
         <a href="#altro/negozi"><b>Supermercati e negozi</b><span>{c.catene} supermercati, {c.negozi} negozi</span></a>
         <a href="#altro/foto-scontrini"><b>Scontrini fotografati{c.daLeggere ? ` (${c.daLeggere} da leggere)` : ''}</b><span>Quelli mandati da chi usa l'app</span></a>

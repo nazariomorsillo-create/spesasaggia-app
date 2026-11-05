@@ -5125,3 +5125,5 @@ a.b.pieno-verde {
 .b.pieno-verde.portami { color: #fff; background: var(--verde-scuro); border-color: var(--verde-scuro); justify-content: center; }
 .b.pieno-verde.portami svg { color: #fff; }
 .b.pieno-verde.portami { box-shadow: 0 3px 0 #1d5e1a; }
+.foto-auto { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: none; }
+.foto-auto a, .foto-auto .link { font-size: 13px; text-align: center; }

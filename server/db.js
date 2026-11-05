@@ -24,7 +24,8 @@ export const AMBITI = ['nazionale', 'centro-nord', 'sud', 'citta'];
 
 // 0.2 (31/10/2026): sfuso esplicito (prima: formato vuoto = sfuso) e scheda prodotto
 const COLONNE = {
-  prodotti: [['imballaggio', "TEXT NOT NULL DEFAULT ''"], ['valori', "TEXT NOT NULL DEFAULT ''"], ['sfuso', 'INTEGER NOT NULL DEFAULT 0'], ['descrizione', "TEXT NOT NULL DEFAULT ''"], ['ingredienti', "TEXT NOT NULL DEFAULT ''"],
+  // 0.76: foto automatiche da Open Food Facts: da dove viene la foto, «non è questa» (non riproporla), ultima ricerca
+  prodotti: [['foto_fonte', "TEXT NOT NULL DEFAULT ''"], ['foto_no', 'INTEGER NOT NULL DEFAULT 0'], ['foto_cercata', 'TEXT'], ['imballaggio', "TEXT NOT NULL DEFAULT ''"], ['valori', "TEXT NOT NULL DEFAULT ''"], ['sfuso', 'INTEGER NOT NULL DEFAULT 0'], ['descrizione', "TEXT NOT NULL DEFAULT ''"], ['ingredienti', "TEXT NOT NULL DEFAULT ''"],
     ['produttore', "TEXT NOT NULL DEFAULT ''"], ['provenienza', "TEXT NOT NULL DEFAULT ''"], ['foto', "TEXT NOT NULL DEFAULT ''"],
     ['nutriscore', "TEXT NOT NULL DEFAULT ''"], ['note', "TEXT NOT NULL DEFAULT ''"],
     // 0.3: gruppo NOVA (1 = non lavorato … 4 = ultra-lavorato) da Open Food Facts

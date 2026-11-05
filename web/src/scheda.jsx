@@ -28,7 +28,12 @@ export function Scheda({ id, chiedi }) {
     <Doppioni key={`${p.id}-${p.ultimi.map((x) => x.id).join('.')}`} p={p} onUnito={unito} />
     <section className="scheda">
       <div className="scheda-testa">
-        {p.foto ? <img className="scheda-foto" src={p.foto} alt={p.nome} /> : <AggiungiFoto p={p} onFatto={(t) => { setMsg(t); s.ricarica(); }} />}
+        {p.foto ? (p.foto_fonte
+          ? <div className="foto-auto"><img className="scheda-foto" src={p.foto} alt={p.nome} />
+            {/* 0.76: foto presa da Open Food Facts (licenza CC BY-SA): si dice da dove viene, e si può togliere se è sbagliata */}
+            <a className="muto piccolo" href={p.ean ? `https://it.openfoodfacts.org/prodotto/${p.ean}` : 'https://it.openfoodfacts.org'} target="_blank" rel="noopener">Foto: Open Food Facts</a>
+            <button type="button" className="link piccolo" onClick={() => azione(() => api(`/api/prodotti/${p.id}/foto-sbagliata`, { metodo: 'POST' }), 'Foto tolta: non la propongo più. Se vuoi, fotografa tu il prodotto.')}>Non è questa foto</button></div>
+          : <img className="scheda-foto" src={p.foto} alt={p.nome} />) : <AggiungiFoto p={p} onFatto={(t) => { setMsg(t); s.ricarica(); }} />}
         <div className="colonna" style={{ gap: 6 }}>
           <h1 className="scheda-nome">{p.nome}</h1>
           <p className="muto">{p.voce}, {formato}</p>

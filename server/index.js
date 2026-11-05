@@ -15,6 +15,7 @@ import { codice, daIngredienti, elenco as elencoAdditivi } from './additivi.js';
 import { capisci, trovaVoce, indovina, maiuscola, radici } from './voce.js';
 import { accesso } from './accesso.js';
 import * as catalogo from './catalogo.js';
+import { cercaFoto } from './foto-auto.js';
 import { invia as inviaWhatsapp } from './whatsapp.js';
 import * as lettura from './lettura.js';
 import { produttori } from './produttori.js';
@@ -426,6 +427,7 @@ app.put('/api/prodotti/:id', async (req) => {
   const p = db.prepare('SELECT * FROM prodotti WHERE id = ?').get(id(req.params.id)); if (!p) throw new Errore('Prodotto non trovato', 404);
   const d = datiProdotto(req.body || {}, p);
   adattaFormato(d, req.body?.formato_unita, p.id);
+  if (d.foto !== p.foto) db.prepare("UPDATE prodotti SET foto_fonte = '' WHERE id = ?").run(p.id); // 0.76: foto messa da qui, non più quella automatica
   db.prepare(`UPDATE prodotti SET voce_id = @voce_id, nome = @nome, tipo = @tipo, marca = @marca, catena_id = @catena_id, origine = @origine, bio = @bio, quantita = @quantita, pezzi = @pezzi, sfuso = @sfuso,
     ean = @ean, nome_scontrino = @nome_scontrino, descrizione = @descrizione, ingredienti = @ingredienti, produttore = @produttore, provenienza = @provenienza, foto = @foto, nutriscore = @nutriscore, note = @note, nova = @nova, additivi = @additivi, valori = @valori, imballaggio = @imballaggio WHERE id = @id`).run({ ...d, id: p.id });
   // il formato è cambiato: si ricalcola il prezzo per kg / l / pz dei prezzi già rilevati
@@ -556,6 +558,24 @@ function salvaJpeg(dati, max = 1_500_000) {
   return `/foto/${nome}`;
 }
 app.post('/api/foto', async (req) => ({ foto: salvaJpeg(req.body?.dati) }));
+// 0.76: foto automatiche (Open Food Facts). «Non è questa»: si toglie e non si ripropone più
+app.post('/api/prodotti/:id/foto-sbagliata', async (req) => {
+  const p = db.prepare('SELECT * FROM prodotti WHERE id = ?').get(id(req.params.id)); if (!p) throw new Errore('Prodotto non trovato', 404);
+  if (!p.foto_fonte) throw new Errore('Questa foto è stata messa da una persona: la cambi da «Modifica la scheda»');
+  db.prepare("UPDATE prodotti SET foto = '', foto_fonte = '', foto_no = 1 WHERE id = ?").run(p.id);
+  return prodottoCompleto(p.id);
+});
+app.get('/api/foto-automatiche', async (req) => {
+  if (!req.utente.admin) throw new Errore('Questa parte è riservata a chi gestisce i prezzi', 403);
+  const n = (w) => db.prepare(`SELECT COUNT(*) n FROM prodotti p JOIN voci v ON v.id = p.voce_id WHERE ${w}`).get().n;
+  return { senza: n("p.foto = '' AND p.sfuso = 0 AND v.reparto IS NOT 'ortofrutta'"), automatiche: n("p.foto_fonte != ''"), scartate: n('p.foto_no = 1'), catalogo: !!catalogo.info() };
+});
+app.post('/api/foto-automatiche', async (req) => {
+  if (!req.utente.admin) throw new Errore('Questa parte è riservata a chi gestisce i prezzi', 403);
+  // si riprovano anche quelli già cercati in questo mese
+  if (req.body?.tutti) db.prepare("UPDATE prodotti SET foto_cercata = NULL WHERE foto = '' AND foto_no = 0").run();
+  return cercaFoto(db, { cartella: CARTELLA_FOTO, limite: 300 });
+});
 // 0.49: etichetta fotografata (codice a barre non trovato): nome, formato, ingredienti, additivi e Nutri-Score dalla confezione.
 // Modello economico; al massimo 20 letture al giorno a persona e un tetto di spesa al mese (CLAUDE_TETTO_ETICHETTE_MESE, 3 € se non indicato).
 app.post('/api/etichetta', async (req) => {
@@ -1742,6 +1762,11 @@ if (process.env.pm_id !== undefined || process.argv[1] && path.resolve(process.a
   await app.listen({ port: porta, host: process.env.HOST || '127.0.0.1' });
   console.log(`Spesa Saggia in ascolto su http://127.0.0.1:${porta}`);
   // orari dei negozi: un minuto dopo l'avvio e poi ogni giorno (ognuno si rilegge solo quando è vecchio)
+  // 0.76: foto automatiche dei prodotti nuovi: due minuti dopo l'avvio e poi ogni mezz'ora
+  if (process.env.FOTO_AUTOMATICHE !== '0') {
+    const foto = () => cercaFoto(db, { cartella: CARTELLA_FOTO }).catch((e) => console.error('foto automatiche:', e.message));
+    setTimeout(foto, 120_000).unref?.(); setInterval(foto, 30 * 60_000).unref?.();
+  }
   if (process.env.ORARI_AUTOMATICI !== '0') {
     const giro = () => aggiornaOrari(db).catch((e) => console.error('orari:', e.message));
     setTimeout(giro, 60_000).unref?.(); setInterval(giro, 24 * 3600_000).unref?.();
