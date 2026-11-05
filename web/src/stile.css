@@ -5114,3 +5114,5 @@ a.b.pieno-verde {
 .acquisti.da-spuntare li > .cartellino { grid-row: 3; }
 .acquisti.da-spuntare li > .non-cera-tasto { grid-row: 4; }
 .acquisti.da-spuntare li.libera-giro > .libera-azioni { grid-row: 3; }
+.dove-libera { display: flex; flex-direction: column; gap: 10px; }
+.dove-libera > b { font-size: 20px; }

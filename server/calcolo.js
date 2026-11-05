@@ -142,6 +142,31 @@ async function conCoordinate(db, s, salvaCasa) {
 
 const r2 = (x) => Math.round(x * 100) / 100;
 
+// 0.74: le cose generiche vanno nel supermercato che ha scelto chi fa la spesa (0 = dove capita, vuoto = ancora da scegliere).
+// Il prezzo è solo indicativo (il più basso di quella voce in quel supermercato) e non entra nel conto del giro.
+function gruppiLiberi(db, righeLibere, negozi, casa, data, s) {
+  const negoziLiberi = []; const ovunque = []; const daScegliere = [];
+  if (!righeLibere.length) return { negoziLiberi, ovunque, daScegliere };
+  const tl = miglioriPerCatena(db, righeLibere, data, s, null).tabella;
+  const nomi = new Map(db.prepare('SELECT id, nome FROM catene').all().map((c) => [c.id, c.nome]));
+  for (const r of righeLibere) {
+    const prezzi = [...(tl.get(r.id)?.values() || [])].sort((a, b) => a.costo - b.costo);
+    const voce = { riga: rigaCorta(r), da: null, foto: prezzi.find((x) => x.prodotto.foto)?.prodotto.foto || '' };
+    if (r.catena_libera == null) { daScegliere.push(voce); continue; }
+    if (r.catena_libera === 0) { ovunque.push(voce); continue; }
+    let g = negoziLiberi.find((x) => x.catena_id === r.catena_libera);
+    if (!g) {
+      const suoi = negozi.filter((n) => n.catena_id === r.catena_libera); const conPos = suoi.filter((n) => n.lat != null);
+      const n = (casa?.lat && conPos.length ? conPos.sort((a, b) => mappe.distanzaKm(casa, a) - mappe.distanzaKm(casa, b))[0] : suoi[0]) || {};
+      g = { catena: nomi.get(r.catena_libera) || '', catena_id: r.catena_libera, indirizzo: n.indirizzo || '', citta: n.citta || '', nome: n.nome || '', id: n.id || null, orari: n.orari || '', lat: n.lat ?? null, lng: n.lng ?? null, righe: [], subtotale: 0, liberi: [] };
+      negoziLiberi.push(g);
+    }
+    const qui = tl.get(r.id)?.get(r.catena_libera);
+    g.liberi.push({ ...voce, da: qui ? qui.costo : null, foto: qui?.prodotto.foto || voce.foto });
+  }
+  return { negoziLiberi, ovunque, daScegliere };
+}
+
 // 0.61: una riga «libera» (generica, il prodotto si sceglie al supermercato) non entra nel conto del giro: si prende dove si va
 export const libera = (r) => !!r.libera && !r.prodotto_id && !r.catena_id;
 export async function calcola(db, { data = oggi(), famiglia_id = null, s = impostazioni(db), salvaCasa = null, catene_ids = null, anchePresi = false } = {}) {
@@ -149,8 +174,9 @@ export async function calcola(db, { data = oggi(), famiglia_id = null, s = impos
   const avvisi = [];
   if (!tutteRighe.length) return { data, righe: tutteRighe, soluzioni: [], singoli: [], liberi: [], avvisi: ['La lista è vuota.'] };
   const liberi = tutteRighe.filter(libera).map(rigaCorta); const righe = tutteRighe.filter((r) => !libera(r));
-  if (!righe.length) return { data, righe: tutteRighe.map(rigaCorta), soluzioni: [], singoli: [], liberi, avvisi };
   const { casa, negozi } = await conCoordinate(db, s, salvaCasa);
+  const gl = gruppiLiberi(db, tutteRighe.filter(libera), negozi, casa, data, s);
+  if (!righe.length) return { data, righe: tutteRighe.map(rigaCorta), soluzioni: [], singoli: [], liberi, ...gl, avvisi };
   if (!casa.lat) avvisi.push('Manca l\'indirizzo di casa (Altro → La mia famiglia): il giro e i chilometri non si possono calcolare.');
   const { tabella, catene } = miglioriPerCatena(db, righe, data, s, catene_ids);
   if (catene_ids && catene_ids.length && catene_ids.length < db.prepare('SELECT COUNT(*) n FROM catene').get().n) avvisi.push(`Guardo solo i tuoi supermercati: ${catene.map((c) => c.nome).join(', ')}. Ne aggiungi altri in Altro → I miei supermercati.`);
@@ -205,28 +231,13 @@ export async function calcola(db, { data = oggi(), famiglia_id = null, s = impos
     ...x, punteggio: undefined,
     rispetto: migliore1 && x !== migliore1 ? { catena: migliore1.catene[0], risparmio: r2(migliore1.totale - x.totale), minuti: x.minuti != null && migliore1.minuti != null ? x.minuti - migliore1.minuti : null, recupera: migliore1.mancanti.length - x.mancanti.length } : null,
   }));
-  // 0.72: le righe generiche («scelgo al supermercato») vanno nel supermercato del giro dove la voce costa meno;
-  // se non c'è nessun prezzo, nel negozio dove si comprano più cose. Il prezzo è solo indicativo e non entra nel conto.
-  const righeLibere = tutteRighe.filter(libera);
-  if (righeLibere.length && soluzioni.length) {
-    const tl = miglioriPerCatena(db, righeLibere, data, s, catene_ids).tabella;
-    for (const sol of soluzioni) {
-      for (const n of sol.negozi) n.liberi = [];
-      const principale = [...sol.negozi].sort((a, b) => b.righe.length - a.righe.length)[0];
-      for (const r of righeLibere) {
-        let best = null; let dove = null;
-        for (const n of sol.negozi) { const v = tl.get(r.id)?.get(n.catena_id); if (v && (!best || v.costo < best.costo)) { best = v; dove = n; } }
-        (dove || principale).liberi.push({ riga: rigaCorta(r), da: best ? best.costo : null, foto: best?.prodotto.foto || '', prezzi: Object.fromEntries(sol.negozi.map((n) => [n.catena, tl.get(r.id)?.get(n.catena_id)?.costo ?? null])) });
-      }
-    }
-  }
   // la più economica in assoluto (anche se la strada o la soglia la fanno scartare): serve per dire quanto si risparmierebbe altrove
   const minMancanti = Math.min(...tutte.map((x) => x.mancanti.length), Infinity);
   const piuEconomica = tutte.filter((x) => x.mancanti.length === minMancanti).sort((a, b) => a.totale - b.totale)[0] || null;
-  return { data, impostazioni: { euro_km: s.euro_km, soglia_negozio: s.soglia_negozio, sosta: s.sosta }, righe: tutteRighe.map(rigaCorta), liberi, soluzioni, piuEconomica: piuEconomica ? { ...piuEconomica, punteggio: undefined } : null, singoli: singoli.map((x) => ({ catena: x.catene[0], spesa: x.spesa, totale: x.totale, mancanti: x.mancanti.length, km: x.km })), avvisi };
+  return { data, impostazioni: { euro_km: s.euro_km, soglia_negozio: s.soglia_negozio, sosta: s.sosta }, righe: tutteRighe.map(rigaCorta), liberi, ...gl, soluzioni, piuEconomica: piuEconomica ? { ...piuEconomica, punteggio: undefined } : null, singoli: singoli.map((x) => ({ catena: x.catene[0], spesa: x.spesa, totale: x.totale, mancanti: x.mancanti.length, km: x.km })), avvisi };
 }
 
-const rigaCorta = (r) => ({ id: r.id, voce: r.voce, quantita: r.quantita, unita: r.unita, qualita: r.qualita, marca: r.marca, prodotto_scelto: r.prodotto_scelto || null });
+const rigaCorta = (r) => ({ id: r.id, voce: r.voce, catena_libera: r.catena_libera ?? null, quantita: r.quantita, unita: r.unita, qualita: r.qualita, marca: r.marca, prodotto_scelto: r.prodotto_scelto || null });
 const acquisto = (x) => ({
   riga: rigaCorta(x.riga), prodotto: x.prodotto.nome, prodotto_id: x.prodotto.id, foto: x.prodotto.foto || '', tipo: x.prodotto.tipo, marca: x.prodotto.marca, origine: x.prodotto.origine, bio: !!x.prodotto.bio, qualita: x.prodotto.qualita ?? null,
   confezioni: x.confezioni, formatoMancante: !!x.formatoMancante, costo: x.costo, prezzo: x.prezzo.prezzo, unitario: x.prezzo.unitario, offerta: !!x.prezzo.offerta,

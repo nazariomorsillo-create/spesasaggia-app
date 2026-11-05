@@ -142,6 +142,11 @@ const mieCatene = (req) => {
 };
 const aggiungiMia = (req, cid) => { if (req.famiglia) db.prepare('INSERT OR IGNORE INTO famiglia_catene (famiglia_id, catena_id) VALUES (?, ?)').run(req.famiglia.id, cid); };
 app.get('/api/miei-supermercati', async (req) => catene(req).filter((c) => c.mia));
+// 0.74: tra quali supermercati si sceglie dove prendere una cosa generica: i tuoi (quelli che guarda anche il giro)
+app.get('/api/supermercati-giro', async (req) => {
+  const ids = mieCatene(req); const tutte = db.prepare("SELECT id, nome FROM catene WHERE tipo IS NOT 'fornitore' ORDER BY nome").all();
+  return ids && ids.length ? tutte.filter((c) => ids.includes(c.id)) : tutte;
+});
 app.post('/api/miei-supermercati', async (req) => { const cid = id(req.body?.catena_id); if (!db.prepare('SELECT 1 FROM catene WHERE id = ?').get(cid)) throw new Errore('Supermercato non trovato', 404); aggiungiMia(req, cid); return catene(req); });
 app.delete('/api/miei-supermercati/:id', async (req) => { db.prepare('DELETE FROM famiglia_catene WHERE famiglia_id = ? AND catena_id = ?').run(req.famiglia.id, id(req.params.id)); return catene(req); });
 // casa, città e area della famiglia: da qui parte e torna il giro
@@ -1279,7 +1284,7 @@ const lista = (req) => {
         const p = prodRiga.get(z.prodotto_id); if (!p || p.voce_id !== x.voce_id) continue;
         if (!o || z.unitario < o.z.unitario) o = { z, p };
       }
-      return { ...x, opzioni: [], offerta_voce: o ? { prodotto_id: o.p.id, nome: o.p.nome, catena: catene.get(o.z.catena_id), prezzo: o.z.prezzo, valido_al: o.z.valido_al || null } : null };
+      return { ...x, opzioni: [], dove_libera: x.catena_libera === 0 ? 'dove capita' : x.catena_libera ? catene.get(x.catena_libera) || '' : '', offerta_voce: o ? { prodotto_id: o.p.id, nome: o.p.nome, catena: catene.get(o.z.catena_id), prezzo: o.z.prezzo, valido_al: o.z.valido_al || null } : null };
     }
     const opzioni = opzioniDa(analisiVoce({ id: x.voce_id, nome: x.voce, unita: x.unita, reparto: x.reparto }, req, prezzi, catene))
       .map((o) => { const c = costo(o.prodotto, o, x.quantita, x.unita); return { ...o, stima: c?.costo ?? null, confezioni: c?.confezioni ?? null }; });
@@ -1533,12 +1538,24 @@ function propostePer(req, r, v, schede, catene, mie) {
     confrontati: altri.length, senzaPrezzo: conPosto.filter((k) => !k.dove).length, zona: { raggio, casa: !!casa?.lat, supermercati: ammessi.size },
   };
 }
+// 0.74: dove si prende una cosa generica (0 = dove capita); vale anche per la volta dopo
+function doveLibera(req, r, v) {
+  const cid = v === null || v === '' ? null : Number(v) === 0 ? 0 : id(v);
+  if (cid && !db.prepare('SELECT 1 FROM catene WHERE id = ?').get(cid)) throw new Errore('Supermercato non trovato', 404);
+  db.prepare('UPDATE righe_lista SET catena_libera = ? WHERE id = ?').run(cid, r.id);
+  if (cid != null) db.prepare(`INSERT INTO abitudini (famiglia_id, voce_id, catena_libera) VALUES (?, ?, ?)
+    ON CONFLICT(famiglia_id, voce_id) DO UPDATE SET catena_libera = excluded.catena_libera`).run(req.famiglia.id, r.voce_id, cid);
+}
+app.post('/api/lista/:id/dove', async (req) => { const r = rigaDi(req, req.params.id); doveLibera(req, r, req.body?.catena_libera); return { ok: true }; });
 // La scelta: un prodotto preciso (anche dal catalogo) con le confezioni, oppure "decidi tu" con il tipo
 app.post('/api/lista/:id/scegli', async (req) => {
   const r = rigaDi(req, req.params.id); const b = req.body || {};
   if (b.libera) {
     // 0.61: generica, il prodotto lo sceglie chi fa la spesa al supermercato (come una lista di carta)
     db.prepare("UPDATE righe_lista SET prodotto_id = NULL, scelto = 1, libera = 1, qualita = 'qualsiasi', marca = 'qualsiasi', catena_id = NULL, offerta_nascosta = 0, migliore_nascosto = 0 WHERE id = ?").run(r.id);
+    // 0.74: il supermercato dove la prendi; se non lo dici, quello dell'ultima volta
+    if (b.catena_libera !== undefined) doveLibera(req, r, b.catena_libera);
+    else if (r.catena_libera == null) { const a = db.prepare('SELECT catena_libera FROM abitudini WHERE famiglia_id = ? AND voce_id = ?').get(req.famiglia.id, r.voce_id); if (a?.catena_libera != null) db.prepare('UPDATE righe_lista SET catena_libera = ? WHERE id = ?').run(a.catena_libera, r.id); }
   } else if (b.automatica) {
     const d = datiRiga({ qualita: b.qualita, marca: b.marca }, r);
     db.prepare('UPDATE righe_lista SET prodotto_id = NULL, scelto = 1, libera = 0, qualita = ?, marca = ?, catena_id = NULL, offerta_nascosta = 0, migliore_nascosto = 0 WHERE id = ?').run(d.qualita, d.marca, r.id);

@@ -62,7 +62,9 @@ const COLONNE = {
   scontrini: [['foto_id', 'INTEGER']],
   utenti: [['produttore_id', 'INTEGER'], ['installata', 'INTEGER NOT NULL DEFAULT 0']],
   // 0.41: catena_id = la riga va presa in quel supermercato (offerta scelta dalla lista); offerta_nascosta = «non mi interessa»
-  righe_lista: [['preso', 'INTEGER NOT NULL DEFAULT 0'], ['famiglia_id', 'INTEGER'], ['scelto', 'INTEGER NOT NULL DEFAULT 0'], ['catena_id', 'INTEGER'], ['offerta_nascosta', 'INTEGER NOT NULL DEFAULT 0'], ['migliore_nascosto', 'INTEGER NOT NULL DEFAULT 0'], ['prodotto_prima', 'INTEGER'], ['quantita_prima', 'REAL'], ['libera', 'INTEGER NOT NULL DEFAULT 0']],
+  righe_lista: [['preso', 'INTEGER NOT NULL DEFAULT 0'], ['famiglia_id', 'INTEGER'], ['scelto', 'INTEGER NOT NULL DEFAULT 0'], ['catena_id', 'INTEGER'], ['offerta_nascosta', 'INTEGER NOT NULL DEFAULT 0'], ['migliore_nascosto', 'INTEGER NOT NULL DEFAULT 0'], ['prodotto_prima', 'INTEGER'], ['quantita_prima', 'REAL'], ['libera', 'INTEGER NOT NULL DEFAULT 0'], ['catena_libera', 'INTEGER']],
+  // 0.74: dove prendi una cosa generica (0 = dove capita), per la riga e come abitudine per la volta dopo
+  abitudini: [['catena_libera', 'INTEGER']],
   // 0.18: casa e igiene. Il nome del «pezzo» di una voce a pezzi (lavaggio, rotolo, capsula) e i prodotti non alimentari
   voci: [['pezzo', "TEXT NOT NULL DEFAULT ''"]],
 };

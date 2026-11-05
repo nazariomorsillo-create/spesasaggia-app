@@ -247,7 +247,7 @@ function RigaLista({ r, fai, spunta, togli }) {
   let sotto;
   if (r.preso) sotto = 'preso';
   else if (conProdotto) sotto = [sup?.confezioni > 1 ? `${sup.confezioni} confezioni` : r.prodotto_quantita > 0 ? '' : quanto(r.quantita, r.unita, false, r.pezzo), sup?.prezzo != null && sup?.confezioni > 1 ? `${euro(sup.prezzo)} in tutto` : ''].filter(Boolean).join(', ');
-  else if (r.scelto && r.libera) sotto = `${quanto(r.quantita, r.unita, false, r.pezzo)}, lo scegli tu al supermercato`;
+  else if (r.scelto && r.libera) sotto = `${quanto(r.quantita, r.unita, false, r.pezzo)}, lo scegli tu al supermercato${r.dove_libera === 'dove capita' ? ', dove capita' : r.dove_libera ? ` da ${r.dove_libera}` : ''}`;
   else if (r.scelto) sotto = `decido io: il più conveniente${tipo ? ` (${tipo})` : ''}`;
   else sotto = `${quanto(r.quantita, r.unita, false, r.pezzo)}${tipo ? `, ${tipo}` : ''}`;
   const testa = <span className="voce-nome"><b>{nome}</b>{conProdotto ? <Semaforo q={r.voto_prodotto} piccolo sempre /> : null}{conProdotto && sup?.catena ? <span className="pill super-lista">{sup.catena}</span> : null}{conProdotto && sup?.scelto_qui && sup.offerta ? <span className="pill offerta">offerta</span> : null}</span>;
@@ -433,15 +433,20 @@ function Giro({ annuncio, tutto = false }) {
   // 0.72: si spunta anche qui (vale per la lista); quello che non trovi lo lasci e resta in lista per la prossima volta
   const [presi, setPresi] = useState(() => new Set()); const [nonCera, setNonCera] = useState(() => new Set(nonTrovatiOggi()));
   const [msg, setMsg] = useState('');
-  // 0.72: dove prendere le cose generiche, se le sposti tu da un supermercato all'altro (riga → supermercato)
-  const [dove, setDove] = useState(() => mem.leggi('giro-dove', {}) || {});
+  const miei = useDati(tutto ? null : '/api/supermercati-giro');
   if (c.errore) return <div className="errore">{c.errore}</div>;
   if (!c.dati) return <p className="muto">Confronto i supermercati…</p>;
   const r = c.dati; const [prima, ...altre] = r.soluzioni;
-  const nomi = prima ? prima.negozi.map((n) => n.catena) : [];
-  const liberiDi = new Map(nomi.map((x) => [x, []]));
-  if (prima) for (const n of prima.negozi) for (const l of n.liberi || []) liberiDi.get(nomi.includes(dove[l.riga.id]) ? dove[l.riga.id] : n.catena).push(l);
-  const sposta = (riga, catena) => { const d2 = { ...dove, [riga.id]: catena }; setDove(d2); mem.scrivi('giro-dove', d2); setMsg(`«${riga.voce}» lo prendi da ${catena}.`); };
+  // 0.74: le cose generiche stanno nel supermercato che hai scelto tu; se lì non c'è altro da prendere, quel supermercato ha la sua lista
+  const gl = r.negoziLiberi || [];
+  const base = prima ? prima.negozi.map((n) => ({ ...n, liberi: gl.find((g) => g.catena_id === n.catena_id)?.liberi || [] })) : [];
+  const carte = [...base, ...gl.filter((g) => !base.some((n) => n.catena_id === g.catena_id))];
+  const scelte = (miei.dati || []).map((x) => ({ id: x.id, nome: x.nome }));
+  const sposta = async (riga, cid) => {
+    setMsg('');
+    try { await api(`/api/lista/${riga.id}/dove`, { metodo: 'POST', corpo: { catena_libera: cid } }); await c.ricarica(); setMsg(`«${riga.voce}» ${cid === 0 ? 'lo prendi dove capita' : `lo prendi da ${scelte.find((x) => x.id === cid)?.nome || 'lì'}`}: me lo ricordo anche la prossima volta.`); dispatchEvent(new Event('lista-cambiata')); }
+    catch (e) { setMsg(e.message); }
+  };
   const spunta = async (riga) => {
     const nuovo = !presi.has(riga.id); const p2 = new Set(presi); if (nuovo) p2.add(riga.id); else p2.delete(riga.id); setPresi(p2); setMsg('');
     try { await api(`/api/lista/${riga.id}?breve=1`, { metodo: 'PUT', corpo: { preso: nuovo } }); dispatchEvent(new Event('lista-cambiata')); } catch (e) { setMsg(e.message); }
@@ -450,6 +455,7 @@ function Giro({ annuncio, tutto = false }) {
     const n2 = new Set(nonCera); if (n2.has(riga.id)) n2.delete(riga.id); else { n2.add(riga.id); setMsg(`«${riga.voce}» resta in lista: lo prendi la prossima volta.`); }
     setNonCera(n2); mem.scrivi('non-trovati', { giorno: oggiIso(), righe: [...n2] });
   };
+  const propLib = { scelte, onSposta: sposta, presi, nonCera, onSpunta: spunta, onNonCera: nonTrovato };
   return (<>
     {!tutto && <a className="b tenue-marca torna-lista torna-su" href="#lista"><Icona n="indietro" d={22} /> Torna alla lista e aggiungi</a>}
     <div className="intesta"><h1>{tutto ? 'Com\'è andata la spesa' : 'Il giro della spesa'}</h1>{r.righe.length > 0 && <p>{tutto ? `Per ${r.righe.length === 1 ? '1 cosa' : `${r.righe.length} cose`} della tua lista` : 'Ogni supermercato ha la sua lista: vai da uno oggi e dagli altri quando vuoi. Spunta quello che prendi; quello che non trovi resta in lista.'}</p>}</div>
@@ -457,17 +463,19 @@ function Giro({ annuncio, tutto = false }) {
     {msg && <div className="ok" role="status">{msg}</div>}
 
     {r.avvisi.map((a, i) => <div key={i} className="avviso">{a}</div>)}
+    {!tutto && (r.daScegliere || []).length > 0 && <section className="soluzione negozio-giro-carta da-scegliere-dove"><h2>Dove li prendi?</h2><p className="muto">Le hai lasciate da scegliere al supermercato: dimmi in quale, così le trovi nella sua lista.</p>
+      <ul className="acquisti da-spuntare">{r.daScegliere.map((l) => <RigaLibera key={l.riga.id} l={l} chiedi {...propLib} />)}</ul></section>}
     {!r.soluzioni.length && r.righe.length > (r.fuoriGiro || []).length + (r.liberi || []).length && <div className="avviso">Non ci sono ancora prezzi per le cose della tua lista.</div>}
     {!r.soluzioni.length && (r.fuoriGiro || []).length > 0 && <div className="fornitore-box"><b>Da comprare a parte, dal fornitore</b>{r.fuoriGiro.map((f) => <span key={f.id}>{f.voce}: {f.prodotto} da <b>{f.fornitore}</b>, {euro(f.prezzo)}</span>)}</div>}
-    {prima && (tutto ? <Soluzione s={prima} prima fuori={r.fuoriGiro || []} />
-      : <>
-        {prima.negozi.map((n) => <Negozio key={n.catena} n={n} liberi={liberiDi.get(n.catena)} nomi={nomi} onSposta={sposta} presi={presi} nonCera={nonCera} onSpunta={spunta} onNonCera={nonTrovato} />)}
+    {tutto && prima && <Soluzione s={prima} prima fuori={r.fuoriGiro || []} />}
+    {!tutto && carte.map((n) => <Negozio key={n.catena_id || n.catena} n={n} liberi={n.liberi} propLib={propLib} presi={presi} nonCera={nonCera} onSpunta={spunta} onNonCera={nonTrovato} />)}
+    {!tutto && (r.ovunque || []).length > 0 && <section className="soluzione negozio-giro-carta"><h2>Dove capita</h2><p className="muto">Le prendi nel primo supermercato dove passi.</p>
+      <ul className="acquisti da-spuntare">{r.ovunque.map((l) => <RigaLibera key={l.riga.id} l={l} qui={0} {...propLib} />)}</ul></section>}
+    {prima && !tutto && (<>
         {prima.mancanti.filter((m) => !(r.fuoriGiro || []).some((f) => f.id === m.id)).length > 0 && <div className="avviso">Senza un prezzo nei tuoi supermercati: {prima.mancanti.filter((m) => !(r.fuoriGiro || []).some((f) => f.id === m.id)).map((m) => m.voce).join(', ')}.</div>}
         {(r.fuoriGiro || []).length > 0 && <div className="fornitore-box"><b>Da comprare a parte, dal fornitore</b>{r.fuoriGiro.map((f) => <span key={f.id}>{f.voce}: {f.prodotto} da <b>{f.fornitore}</b>, {euro(f.prezzo)}</span>)}</div>}
         {prima.negozi.length > 1 && <p className="totale-giro">In tutto, se prendi tutto: <Cartellino n={prima.spesa} /></p>}
       </>)}
-    {!tutto && !prima && (r.liberi || []).length > 0 && <section className="soluzione negozio-giro-carta"><h2>Da prendere dove vuoi</h2><p className="muto">Le scegli tu al supermercato.</p>
-      <ul className="acquisti da-spuntare">{r.liberi.map((x) => <RigaLibera key={x.id} l={{ riga: x }} presi={presi} nonCera={nonCera} onSpunta={spunta} onNonCera={nonTrovato} />)}</ul></section>}
     {prima && r.risparmio && (r.risparmio.unSolo || r.risparmio.altrove) && <Risparmio r={r} prima={prima} />}
     {r.giudizi && <Giudizi g={r.giudizi} />}
     {altre.length > 0 && <details className="altre"><summary>Altre possibilità ({altre.length})</summary>{altre.map((s, i) => <Soluzione key={i} s={s} />)}</details>}
@@ -483,12 +491,12 @@ const oggiIso = () => new Date().toLocaleDateString('sv-SE');
 function nonTrovatiOggi() { const x = mem.leggi('non-trovati', null); return x && x.giorno === oggiIso() ? x.righe || [] : []; }
 const strada = (n) => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(n.lat != null ? `${n.lat},${n.lng}` : `${n.indirizzo || n.nome || n.catena}${n.citta ? `, ${n.citta}` : ''}`)}`;
 // 0.72: un supermercato del giro, da fare quando vuoi: orario di chiusura in una riga, la sua lista da spuntare, «Portami qui»
-function Negozio({ n, liberi = [], nomi = [], onSposta, presi, nonCera, onSpunta, onNonCera }) {
+function Negozio({ n, liberi = [], propLib, presi, nonCera, onSpunta, onNonCera }) {
   const tutte = [...n.righe, ...liberi]; const fatti = tutte.filter((x) => presi.has(x.riga.id)).length;
   return <section className="soluzione negozio-giro-carta">
     <div className="sol-testa">
       <div><h2>{n.catena}</h2>{(n.indirizzo || n.nome) && <p>{n.indirizzo || n.nome}{n.indirizzo && n.citta ? `, ${n.citta}` : ''}</p>}</div>
-      <Cartellino n={n.subtotale} grande />
+      {n.subtotale > 0 && <Cartellino n={n.subtotale} grande />}
     </div>
     <StatoOrari testo={n.orari} />
     <ul className="acquisti da-spuntare">{n.righe.map((x) => { const preso = presi.has(x.riga.id); const manca = !preso && nonCera.has(x.riga.id);
@@ -500,24 +508,26 @@ function Negozio({ n, liberi = [], nomi = [], onSposta, presi, nonCera, onSpunta
         </div>
         <Cartellino n={x.costo} />
         {!preso && <button type="button" className="link non-cera-tasto" onClick={() => onNonCera(x.riga)}>{manca ? 'Rimetti: l\'ho trovato' : 'Non c\'era: resta in lista'}</button>}</li>; })}
-      {liberi.map((l) => <RigaLibera key={l.riga.id} l={l} qui={n.catena} nomi={nomi} onSposta={onSposta} presi={presi} nonCera={nonCera} onSpunta={onSpunta} onNonCera={onNonCera} />)}</ul>
+      {liberi.map((l) => <RigaLibera key={l.riga.id} l={l} qui={n.catena_id} {...propLib} />)}</ul>
     {fatti > 0 && <p className="muto">{fatti === tutte.length ? `Da ${n.catena} hai preso tutto.` : `Presi ${fatti} su ${tutte.length}.`}</p>}
     <a className="b contorno" href={strada(n)} target="_blank" rel="noopener"><Icona n="mappa" /> Portami da {n.catena}</a>
   </section>;
 }
-// 0.72: una cosa generica nel giro: la scegli tu sul banco; il prezzo è indicativo (il più basso in quel supermercato) e la puoi spostare
-function RigaLibera({ l, qui = '', nomi = [], onSposta, presi, nonCera, onSpunta, onNonCera }) {
+// 0.74: una cosa generica nel giro: la scegli tu sul banco, nel supermercato che hai scelto tu (lo puoi cambiare); il prezzo è indicativo
+function RigaLibera({ l, qui = null, chiedi = false, scelte = [], onSposta, presi, nonCera, onSpunta, onNonCera }) {
   const x = l.riga; const preso = presi.has(x.id); const manca = !preso && nonCera.has(x.id);
-  const da = qui && l.prezzi ? l.prezzi[qui] : l.da;
-  const altri = nomi.filter((c) => c !== qui);
+  const [cambia, setCambia] = useState(false);
+  const altre = [...scelte.filter((c) => c.id !== qui), ...(qui === 0 ? [] : [{ id: 0, nome: 'Dove capita' }])];
   return <li className={`libera-giro${preso ? ' preso' : ''}${manca ? ' non-cera' : ''}`}>
     <button type="button" className="spunta" role="checkbox" aria-checked={preso} aria-label={`${x.voce}: ${preso ? 'preso' : 'da prendere'}`} onClick={() => onSpunta(x)}>{preso ? <Icona n="spunta" d={28} /> : null}</button>
     {l.foto ? <img className="giro-foto" src={l.foto} alt="" loading="lazy" /> : null}
     <div><b>{x.voce}</b><span>{quanto(x.quantita, x.unita)}: lo scegli tu sul banco</span>
-      <span className="etichette"><span className="pill bolla-libera">Scegli al supermercato</span>{da != null && <span className="muto piccolo">da circa {euro(da)}</span>}</span></div>
+      <span className="etichette"><span className="pill bolla-libera">Scegli al supermercato</span>{l.da != null && <span className="muto piccolo">da circa {euro(l.da)}</span>}</span></div>
     {!preso && <div className="libera-azioni">
-      <button type="button" className="link non-cera-tasto" onClick={() => onNonCera(x)}>{manca ? 'Rimetti: l\'ho trovato' : 'Non c\'era: resta in lista'}</button>
-      {altri.map((c) => <button key={c} type="button" className="b piccolo sposta-libera" onClick={() => onSposta(x, c)}>Lo prendo da {c}{l.prezzi?.[c] != null ? ` (circa ${euro(l.prezzi[c])})` : ''}</button>)}
+      {!chiedi && <button type="button" className="link non-cera-tasto" onClick={() => onNonCera(x)}>{manca ? 'Rimetti: l\'ho trovato' : 'Non c\'era: resta in lista'}</button>}
+      {chiedi || cambia
+        ? <div className="scelte">{altre.map((c) => <button key={c.id} type="button" onClick={() => { setCambia(false); onSposta(x, c.id); }}>{c.nome}</button>)}</div>
+        : <button type="button" className="link" onClick={() => setCambia(true)}>Cambia supermercato</button>}
     </div>}
   </li>;
 }

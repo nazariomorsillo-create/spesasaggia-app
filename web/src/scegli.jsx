@@ -7,6 +7,7 @@ const formato = (p, unita, pezzo = '') => (p.sfuso ? `sfuso, al ${perUnita(unita
 
 export function Scegli({ id, onCambiata }) {
   const s = useDati(`/api/lista/${id}/scelte`);
+  const miei = useDati('/api/supermercati-giro');
   const prod = useDati(s.dati ? `/api/produttori?voce_id=${s.dati.riga.voce_id}` : null);
   const [err, setErr] = useState(''); const [fatto, setFatto] = useState(null); const [attesa, setAttesa] = useState(false);
   useEffect(() => { suCima(); setFatto(null); setErr(''); }, [id]);
@@ -21,9 +22,11 @@ export function Scegli({ id, onCambiata }) {
   // In lista resta solo la voce: il prodotto lo sceglie lui al supermercato
   const lascia = async () => {
     setErr(''); setAttesa(true);
-    try { await api(`/api/lista/${r.id}/scegli`, { metodo: 'POST', corpo: { libera: true } }); onCambiata?.(); location.hash = '#lista'; }
-    catch (e) { setErr(e.message); setAttesa(false); }
+    // 0.74: si resta qui, perché adesso si sceglie in quale supermercato prenderla
+    try { await api(`/api/lista/${r.id}/scegli`, { metodo: 'POST', corpo: { libera: true } }); onCambiata?.(); await s.ricarica(); }
+    catch (e) { setErr(e.message); } finally { setAttesa(false); }
   };
+  const dove = async (cid) => { setErr(''); try { await api(`/api/lista/${r.id}/dove`, { metodo: 'POST', corpo: { catena_libera: cid } }); onCambiata?.(); await s.ricarica(); } catch (e) { setErr(e.message); } };
   const cambiaQuantita = async (q) => { try { await api(`/api/lista/${r.id}`, { metodo: 'PUT', corpo: { quantita: Math.round(q * 100) / 100 } }); onCambiata?.(); s.ricarica(); } catch (e) { setErr(e.message); } };
   const togli = async () => { if (!confirm(`Tolgo «${r.voce}» dalla lista?`)) return; await api(`/api/lista/${r.id}`, { metodo: 'DELETE' }); onCambiata?.(); location.hash = '#lista'; };
   const consiglio = d.alternative.find((a) => a.tipi.includes('consiglio')) || null;
@@ -52,7 +55,7 @@ export function Scegli({ id, onCambiata }) {
     </section>}
 
     {!fatto && <>
-      {d.scelta?.libera && <div className="scelta-fatta"><Icona n="spunta" d={22} /><div><b>Adesso: lo scegli tu al supermercato</b><span>in lista c'è solo «{r.voce}»</span></div></div>}
+      {d.scelta?.libera && <div className="scelta-fatta"><Icona n="spunta" d={22} /><div><b>Adesso: lo scegli tu al supermercato{r.catena_libera === 0 ? ', dove capita' : r.catena_libera ? `, da ${(miei.dati || []).find((c) => c.id === r.catena_libera)?.nome || ''}` : ''}</b><span>in lista c'è solo «{r.voce}»</span></div></div>}
       {d.scelta?.automatica && <div className="scelta-fatta"><Icona n="spunta" d={22} /><div><b>Adesso: decido io per te</b><span>prendo il più conveniente {r.qualita !== 'qualsiasi' ? `tra quelli ${QUALITA.find(([k]) => k === r.qualita)?.[1].toLowerCase()}` : ''}</span></div></div>}
       {err && <div className="errore">{err}</div>}
 
@@ -61,6 +64,12 @@ export function Scegli({ id, onCambiata }) {
       <Quantita r={r} p={d.principale?.prodotto} onCambia={cambiaQuantita} />
 
       <section className={`libera-scelta${d.scelta?.libera ? ' attiva' : ''}`}>
+        {d.scelta?.libera && <div className="dove-libera">
+          <b>In quale supermercato lo prendi?</b>
+          <div className="scelte">{(miei.dati || []).map((c) => <button key={c.id} type="button" aria-pressed={r.catena_libera === c.id} onClick={() => dove(c.id)}>{r.catena_libera === c.id ? '✓ ' : ''}{c.nome}</button>)}
+            <button type="button" aria-pressed={r.catena_libera === 0} onClick={() => dove(0)}>{r.catena_libera === 0 ? '✓ ' : ''}Dove capita</button></div>
+          {r.catena_libera == null && <span className="muto piccolo">Così nel giro lo trovi nella lista di quel supermercato. La prossima volta me lo ricordo io.</span>}
+        </div>}
         {d.scelta?.libera
           ? <a className="b grande pieno-verde" href="#lista"><Icona n="spunta" d={22} /> Va bene così, torna alla lista</a>
           : <button type="button" className="b grande pieno-verde" disabled={attesa} onClick={lascia}>Lascia «{r.voce}», scelgo al supermercato</button>}
