@@ -36,7 +36,8 @@ export function Scheda({ id, chiedi }) {
           {(() => { // dove si trova: il prezzo più basso per supermercato, al massimo 4
             const dove = [];
             for (const x of [...(p.ultimi || [])].filter((x) => x.quiValido !== false).sort((a, b) => a.prezzo - b.prezzo)) if (!dove.some((y) => y.catena_id === x.catena_id)) dove.push(x);
-            return dove.length ? <span className="dove-si-trova">{dove.slice(0, 4).map((x) => <span key={x.catena_id} className="pill super-lista">{x.catena} · {euro(x.prezzo)}{x.offerta ? ' in offerta' : ''}</span>)}</span> : <span className="muto piccolo">Ancora nessun supermercato: aggiungi un prezzo</span>;
+            // 0.72: se ci sono prezzi li mostra solo il riquadro «Prezzi nei supermercati», qui sarebbero un doppione
+            return dove.length ? null : <span className="muto piccolo">Ancora nessun supermercato: aggiungi un prezzo</span>;
           })()}
         </div>
       </div>
@@ -44,7 +45,7 @@ export function Scheda({ id, chiedi }) {
       {msg && <div className="ok" role="status">{msg}</div>}{err && <div className="errore">{err}</div>}
       <div className="riga">
         <button type="button" className="b pieno grande" onClick={() => azione(() => api('/api/lista', { metodo: 'POST', corpo: { voce_id: p.voce_id, prodotto_id: p.id, quantita: p.sfuso ? 1 : (p.quantita || 1) } }), 'Messo in lista proprio questo prodotto')}>Metti in lista questo</button>
-        {!chiediPrezzo && <button type="button" className="b grande contorno viola" onClick={() => { setPrezzo(true); suCima(); }}>Aggiungi un prezzo</button>}
+        {!chiediPrezzo && !p.ultimi.length && <button type="button" className="b grande contorno viola" onClick={() => { setPrezzo(true); suCima(); }}>Aggiungi un prezzo</button>}
         <button type="button" className={`b grande ${p.preferito ? 'giallo' : ''}`} aria-pressed={p.preferito} onClick={() => azione(() => api('/api/preferiti', { metodo: 'POST', corpo: { voce_id: p.voce_id, prodotto_id: p.preferito ? null : p.id } }), p.preferito ? 'Tolto dai preferiti' : `Ora è il tuo preferito per «${p.voce}»`)}>{p.preferito ? '★ È il mio preferito' : '☆ Segna come preferito'}</button>
       </div>
 
@@ -55,6 +56,7 @@ export function Scheda({ id, chiedi }) {
       <h2>Prezzi nei supermercati</h2>
       {!p.sfuso && !(p.quantita > 0) && <FormatoMancante p={p} onFatto={(t) => { setMsg(t); s.ricarica(); }} />}
       {p.ultimi.length ? <ul className="prezzi-scheda">{p.ultimi.map((x) => <RigaPrezzo key={x.id} x={x} p={p} onFatto={() => s.ricarica()} />)}</ul> : <p className="muto">Nessun prezzo ancora.</p>}
+      {p.ultimi.length > 0 && !chiediPrezzo && <button type="button" className="b piccolo altro-super" onClick={() => { setPrezzo(true); suCima(); }}>+ Prezzo in un altro supermercato</button>}
       {p.storia.length > 0 && <details className="altre"><summary>Prezzi precedenti ({p.storia.length})</summary><ul className="prezzi-scheda">{p.storia.map((x) => <RigaPrezzo key={x.id} x={x} p={p} storia onFatto={() => s.ricarica()} />)}</ul></details>}
     </section>
 
