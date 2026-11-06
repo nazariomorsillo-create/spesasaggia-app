@@ -1374,9 +1374,14 @@ app.post('/api/lista/voce', async (req) => {
   const voci = db.prepare('SELECT * FROM voci').all(); const prodotti = db.prepare('SELECT id, voce_id, nome, marca, quantita, sfuso FROM prodotti').all();
   const capito = capisci(t, voci, prodotti).map((c) => {
     if (!c.voce_id) {
-      // nome mai sentito: forse è un prodotto preciso del catalogo ("pan di stelle", "nutella")
+      // nome mai sentito: forse è un prodotto preciso del catalogo ("pan di stelle", "nutella").
+      // 0.78: solo se non è una cosa comune che l'app riconosce (zucca, petto di pollo: si crea la voce generica),
+      // e con parole uguali, non solo l'inizio («zucca» non è la marca «Zuccato»): la prima parola detta è la prima del nome o la marca
       const r = radici(c.nome);
-      const trovato = catalogo.cerca(c.nome, 8).find((x) => { const t = radici(`${x.nome} ${x.marca}`); return r.length && r.every((w) => t.some((y) => y === w || y.startsWith(w))); });
+      const trovato = indovina(c.nome) ? null : catalogo.cerca(c.nome, 8).find((x) => {
+        const n = radici(x.nome); const m = radici(x.marca || ''); const t = [...n, ...m];
+        return r.length && r.every((w) => t.includes(w)) && (n[0] === r[0] || m.includes(r[0]));
+      });
       return trovato ? { ...c, catalogo: { ean: trovato.ean, nome: trovato.nome, marca: trovato.marca, foto: trovato.foto } } : c;
     }
     const a = abitudine(req.famiglia.id, c.voce_id);
