@@ -157,9 +157,12 @@ function Torna({ a, t = 'Indietro' }) {
 
 // ---------- la lista ----------
 // dopo aver aggiunto: si va a scegliere la prima cosa ancora senza scelta
-export async function vaiAScegliere() {
+// 0.80: dopo aver aggiunto si va alla scelta della cosa APPENA aggiunta (prima andava alla prima della lista ancora da scegliere:
+// scrivevi «petto di pollo» e ti trovavi la zucca messa ieri). Con «libera» la cosa è già generica e si chiede il supermercato.
+export async function vaiAScegliere(prima = null, libera = false) {
   const l = await api('/api/lista');
-  const da = l.find((x) => !x.preso && !x.scelto);
+  const da = (prima ? l.filter((x) => !prima.has(x.id)) : l).find((x) => !x.preso && !x.scelto);
+  if (da && libera) await api(`/api/lista/${da.id}/scegli`, { metodo: 'POST', corpo: { libera: true } });
   if (da) location.hash = `#scegli/${da.id}`;
   return l;
 }
@@ -370,11 +373,16 @@ function Ricerca({ onAggiungi, onAvviso, onModulo, inMezzo = null }) {
   // 0.79: mentre scrivi la casella resta in vista (con la lista lunga e la tastiera aperta finiva fuori dallo schermo)
   const casella = useRef(null);
   useEffect(() => { if (q.length === 1) casella.current?.scrollIntoView({ block: 'start' }); }, [q.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
-  const fatto = async (p, poi = true) => { setErr(''); try { await onAggiungi(p); pulisci(); if (poi) await vaiAScegliere(); } catch (e) { setErr(e.message); } };
+  // si guarda cosa c'era in lista PRIMA di aggiungere, così poi si apre la scelta della cosa nuova
+  const fatto = async (aggiungi, libera = false) => {
+    setErr('');
+    try { const prima = new Set((await api('/api/lista')).map((x) => x.id)); await onAggiungi(aggiungi()); pulisci(); await vaiAScegliere(prima, libera); }
+    catch (e) { setErr(e.message); }
+  };
   const prendi = async (x) => {
     setErr(''); setAttesa(true);
     try {
-      if (x.tipo === 'voce') { await fatto(perTesto(x.nome)); return; }
+      if (x.tipo === 'voce') { await fatto(() => perTesto(x.nome), true); return; }
       if (x.tipo === 'catalogo') await onAggiungi(api(`/api/catalogo/${x.ean}/usa`, { metodo: 'POST', corpo: { lista: true } }).then(() => api('/api/lista')));
       else if (x.prodotto_id && !x.quantitaScelta) { setQuanti(x); return; }
       else await onAggiungi(api('/api/lista', { metodo: 'POST', corpo: { voce_id: x.voce_id, prodotto_id: x.prodotto_id, quantita: x.quantitaScelta ?? x.quantita, scelto: true } }));
@@ -389,7 +397,7 @@ function Ricerca({ onAggiungi, onAvviso, onModulo, inMezzo = null }) {
   if (scansione) return <NuovoDaCodice s={scansione} voci={voci} onFatto={(p, info) => { setScansione(null); location.hash = info?.conPrezzo ? `#prodotto/${p.id}` : `#prodotto/${p.id}/prezzo`; }} onAnnulla={() => setScansione(null)} />;
   const esatta = sug?.some((x) => x.tipo === 'voce' && x.nome.toLowerCase() === q.trim().toLowerCase());
   return <div className="colonna">
-    <form className="cerca" ref={casella} onSubmit={(e) => { e.preventDefault(); if (q.trim()) fatto(perTesto(q.trim())); }}>
+    <form className="cerca" ref={casella} onSubmit={(e) => { e.preventDefault(); if (q.trim()) fatto(() => perTesto(q.trim())); }}>
       <label className="campo-cerca cerca-grande"><Icona n="cerca" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Scrivi cosa ti serve: latte, pane…" aria-label="Scrivi cosa ti serve" autoComplete="off" enterKeyHint="search" />
         {q && <button type="button" className="cancella" aria-label="Cancella" onClick={pulisci}><Icona n="chiudi" d={22} /></button>}</label>
     </form>
@@ -403,7 +411,7 @@ function Ricerca({ onAggiungi, onAvviso, onModulo, inMezzo = null }) {
       </button>}</li>)}
       {sug && !sug.length && <li className="muto nessuno">Nessun prodotto con queste parole: toglierne una aiuta.</li>}
       {sug?.some((x) => x.prodotto_id) && <li className="come-scegliamo"><a href="#come-scegliamo">Come ordiniamo i risultati e scegliamo la Scelta saggia</a></li>}
-      {!esatta && !sug?.some((x) => x.tipo === 'voce') && <li><button type="button" className="metti" onClick={() => fatto(perTesto(q.trim()))}><span className="testo"><b>Metti in lista «{q.trim()}»</b><span>e scegli dopo quale prendere</span></span><span className="piu" aria-hidden="true">+</span></button></li>}
+      {!esatta && !sug?.some((x) => x.tipo === 'voce') && <li><button type="button" className="metti" onClick={() => fatto(() => perTesto(q.trim()))}><span className="testo"><b>Metti in lista «{q.trim()}»</b><span>e scegli dopo quale prendere</span></span><span className="piu" aria-hidden="true">+</span></button></li>}
     </ul>}
     {quanti && <QuantoServe x={quanti} attesa={attesa} onConferma={(n) => prendi({ ...quanti, quantitaScelta: n })} onAnnulla={() => setQuanti(null)} />}
     {err && <div className="errore">{err}</div>}
