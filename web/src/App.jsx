@@ -456,6 +456,42 @@ function Giro({ annuncio, tutto = false }) {
     setNonCera(n2); mem.scrivi('non-trovati', { giorno: oggiIso(), righe: [...n2] });
   };
   const propLib = { scelte, onSposta: sposta, presi, nonCera, onSpunta: spunta, onNonCera: nonTrovato };
+  if (!tutto) {
+    // 0.77 (Nazario, 06/11): una pagina per supermercato, si scorre col dito; in alto i nomi con quante cose restano
+    const fuori = r.fuoriGiro || [];
+    const senzaPrezzo = prima ? prima.mancanti.filter((m) => !fuori.some((f) => f.id === m.id)) : [];
+    const restano = (l) => l.filter((x) => !presi.has(x.riga.id) && !nonCera.has(x.riga.id)).length;
+    const pagine = [];
+    if ((r.daScegliere || []).length) pagine.push({ chiave: 'scegli', titolo: 'Dove li prendi?', conta: r.daScegliere.length, el: <section className="soluzione negozio-giro-carta da-scegliere-dove"><h2>Dove li prendi?</h2><p className="muto">Le hai lasciate da scegliere al supermercato: dimmi in quale, così le trovi nella sua lista.</p>
+      <ul className="acquisti da-spuntare">{r.daScegliere.map((l) => <RigaLibera key={l.riga.id} l={l} chiedi {...propLib} />)}</ul></section> });
+    for (const n of carte) pagine.push({ chiave: `c${n.catena_id}`, titolo: n.catena, conta: restano([...n.righe, ...(n.liberi || [])]), el: <Negozio n={n} liberi={n.liberi} propLib={propLib} presi={presi} nonCera={nonCera} onSpunta={spunta} onNonCera={nonTrovato} /> });
+    if ((r.ovunque || []).length) pagine.push({ chiave: 'ovunque', titolo: 'Dove capita', conta: restano(r.ovunque), el: <section className="soluzione negozio-giro-carta"><h2>Dove capita</h2><p className="muto">Le prendi nel primo supermercato dove passi.</p>
+      <ul className="acquisti da-spuntare">{r.ovunque.map((l) => <RigaLibera key={l.riga.id} l={l} qui={0} {...propLib} />)}</ul></section> });
+    const riepilogo = <div className="riepilogo-giro">
+      {r.avvisi.map((a, i) => <div key={i} className="avviso">{a}</div>)}
+      {senzaPrezzo.length > 0 && <div className="avviso">Senza un prezzo nei tuoi supermercati: {senzaPrezzo.map((m) => m.voce).join(', ')}.</div>}
+      {fuori.length > 0 && <div className="fornitore-box"><b>Da comprare a parte, dal fornitore</b>{fuori.map((f) => <span key={f.id}>{f.voce}: {f.prodotto} da <b>{f.fornitore}</b>, {euro(f.prezzo)}</span>)}</div>}
+      {prima && prima.negozi.length > 1 && <p className="totale-giro">In tutto, se prendi tutto: <Cartellino n={prima.spesa} /></p>}
+      {prima && r.risparmio && (r.risparmio.unSolo || r.risparmio.altrove) && <Risparmio r={r} prima={prima} />}
+      {r.giudizi && <Giudizi g={r.giudizi} />}
+      {altre.length > 0 && <details className="altre"><summary>Altre possibilità ({altre.length})</summary>{altre.map((x, i) => <Soluzione key={i} s={x} />)}</details>}
+      {r.singoli.length > 1 && <details className="altre"><summary>Tutto in un negozio solo</summary>
+        <ul className="singoli">{r.singoli.map((x) => <li key={x.catena}><div><b>{x.catena}</b><span>{x.mancanti ? `${x.mancanti === 1 ? 'manca 1 cosa' : `mancano ${x.mancanti} cose`}` : 'c\'è tutto'}</span></div><Cartellino n={x.spesa} /></li>)}</ul></details>}
+      {r.impostazioni && <p className="muto piccolo">Per dividere la spesa tra i supermercati conto anche la strada ({euro(r.impostazioni.euro_km)} al km): un negozio in più viene proposto solo se fa risparmiare almeno {euro(r.impostazioni.soglia_negozio)}.</p>}
+    </div>;
+    if (pagine.length) pagine.push({ chiave: 'riepilogo', titolo: 'Riepilogo', el: riepilogo });
+    return (<>
+      <a className="b tenue-marca torna-lista torna-su" href="#lista"><Icona n="indietro" d={22} /> Torna alla lista e aggiungi</a>
+      <div className="intesta"><h1>Il giro della spesa</h1>{r.righe.length > 0 && <p>Scorri col dito da un supermercato all'altro. Tocca un prodotto per depennarlo.</p>}</div>
+      {!r.righe.length && <div className="vuota"><p>La lista è vuota: prima scrivi o detta cosa ti serve.</p><a className="b pieno grande" href="#lista">Vai alla lista</a></div>}
+      {msg && <div className="ok" role="status">{msg}</div>}
+      {!pagine.length && r.avvisi.map((a, i) => <div key={i} className="avviso">{a}</div>)}
+      {!r.soluzioni.length && r.righe.length > fuori.length + (r.liberi || []).length && <div className="avviso">Non ci sono ancora prezzi per le cose della tua lista.</div>}
+      {pagine.length ? <PagineGiro pagine={pagine} /> : riepilogo}
+      <a className="b torna-lista torna-giu" href="#lista"><Icona n="indietro" d={22} /> Torna alla lista e aggiungi</a>
+      <Annuncio a={annuncio} />
+    </>);
+  }
   return (<>
     {!tutto && <a className="b tenue-marca torna-lista torna-su" href="#lista"><Icona n="indietro" d={22} /> Torna alla lista e aggiungi</a>}
     <div className="intesta"><h1>{tutto ? 'Com\'è andata la spesa' : 'Il giro della spesa'}</h1>{r.righe.length > 0 && <p>{tutto ? `Per ${r.righe.length === 1 ? '1 cosa' : `${r.righe.length} cose`} della tua lista` : 'Ogni supermercato ha la sua lista: vai da uno oggi e dagli altri quando vuoi. Spunta quello che prendi; quello che non trovi resta in lista.'}</p>}</div>
@@ -486,6 +522,37 @@ function Giro({ annuncio, tutto = false }) {
     <Annuncio a={annuncio} />
   </>);
 }
+// 0.77: le pagine del giro, una per supermercato: si scorrono col dito (scroll-snap) o si sceglie il nome in alto.
+// Si ricorda l'ultima pagina guardata (riaprendo il giro sei di nuovo nel supermercato dove eri); l'altezza segue la pagina aperta.
+function PagineGiro({ pagine }) {
+  const box = useRef(null); const schede = useRef(null); const primo = useRef(true);
+  const [attiva, setAttiva] = useState(() => { const k = mem.leggi('giro-pagina', ''); const i = pagine.findIndex((p) => p.chiave === k); return i >= 0 ? i : 0; });
+  const i0 = Math.min(attiva, pagine.length - 1);
+  const vai = (i, liscio = true) => { const el = box.current; const p = el?.children[i]; if (p) el.scrollTo({ left: p.offsetLeft, behavior: liscio ? 'smooth' : 'auto' }); };
+  useEffect(() => { vai(i0, false); schede.current?.children[i0]?.scrollIntoView({ inline: 'center', block: 'nearest' }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // cambiata pagina: il nome giusto in vista nella barra, e se eri in fondo a una lista si riparte dall'inizio di quella nuova
+  useEffect(() => {
+    if (primo.current) { primo.current = false; return; }
+    schede.current?.children[i0]?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+    const el = box.current; if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [i0]);
+  useEffect(() => { mem.scrivi('giro-pagina', pagine[i0]?.chiave || ''); }, [i0, pagine]);
+  useEffect(() => {
+    const el = box.current; const p = el?.children[i0]; if (!p) return undefined;
+    const fissa = () => { el.style.height = `${p.offsetHeight}px`; };
+    fissa(); const ro = new ResizeObserver(fissa); ro.observe(p); return () => ro.disconnect();
+  }, [i0, pagine.length]);
+  const scorri = () => {
+    const el = box.current; if (!el) return; let migliore = 0;
+    [...el.children].forEach((p, i) => { if (Math.abs(p.offsetLeft - el.scrollLeft) < Math.abs(el.children[migliore].offsetLeft - el.scrollLeft)) migliore = i; });
+    if (migliore !== i0) setAttiva(migliore);
+  };
+  return <>
+    <nav className="giro-schede" ref={schede} aria-label="Supermercati del giro">{pagine.map((p, i) => <button key={p.chiave} type="button" className={i === i0 ? 'attiva' : ''} aria-current={i === i0 ? 'page' : undefined} onClick={() => { setAttiva(i); vai(i); }}>
+      {p.titolo}{p.conta > 0 ? <span className="conta">{p.conta}</span> : p.conta === 0 ? <span className="conta fatto">✓</span> : null}</button>)}</nav>
+    <div className="giro-pagine" ref={box} onScroll={scorri}>{pagine.map((p) => <div className="giro-pagina" key={p.chiave}>{p.el}</div>)}</div>
+  </>;
+}
 // le cose segnate «non c'era» valgono solo per oggi: domani si riprova
 const oggiIso = () => new Date().toLocaleDateString('sv-SE');
 function nonTrovatiOggi() { const x = mem.leggi('non-trovati', null); return x && x.giorno === oggiIso() ? x.righe || [] : []; }
@@ -500,7 +567,7 @@ function Negozio({ n, liberi = [], propLib, presi, nonCera, onSpunta, onNonCera 
     </div>
     <StatoOrari testo={n.orari} />
     <ul className="acquisti da-spuntare">{n.righe.map((x) => { const preso = presi.has(x.riga.id); const manca = !preso && nonCera.has(x.riga.id);
-      return <li key={x.riga.id} className={`${preso ? 'preso' : ''}${manca ? ' non-cera' : ''}`}>
+      return <li key={x.riga.id} className={`${preso ? 'preso' : ''}${manca ? ' non-cera' : ''}`} onClick={(e) => { if (!e.target.closest('button, a')) onSpunta(x.riga); }}>
         <button type="button" className="spunta" role="checkbox" aria-checked={preso} aria-label={`${x.riga.voce}: ${preso ? 'preso' : 'da prendere'}`} onClick={() => onSpunta(x.riga)}>{preso ? <Icona n="spunta" d={28} /> : null}</button>
         {x.foto ? <img className="giro-foto" src={x.foto} alt="" loading="lazy" /> : null}
         <div><b>{x.riga.voce}</b><span>{x.confezioni ? `${x.confezioni} ${x.confezioni === 1 ? 'confezione' : 'confezioni'}` : quanto(x.riga.quantita, x.riga.unita)}: {x.prodotto}</span>
@@ -518,7 +585,7 @@ function RigaLibera({ l, qui = null, chiedi = false, scelte = [], onSposta, pres
   const x = l.riga; const preso = presi.has(x.id); const manca = !preso && nonCera.has(x.id);
   const [cambia, setCambia] = useState(false);
   const altre = [...scelte.filter((c) => c.id !== qui), ...(qui === 0 ? [] : [{ id: 0, nome: 'Dove capita' }])];
-  return <li className={`libera-giro${preso ? ' preso' : ''}${manca ? ' non-cera' : ''}`}>
+  return <li className={`libera-giro${preso ? ' preso' : ''}${manca ? ' non-cera' : ''}`} onClick={(e) => { if (!chiedi && !e.target.closest('button, a')) onSpunta(x); }}>
     <button type="button" className="spunta" role="checkbox" aria-checked={preso} aria-label={`${x.voce}: ${preso ? 'preso' : 'da prendere'}`} onClick={() => onSpunta(x)}>{preso ? <Icona n="spunta" d={28} /> : null}</button>
     {l.foto ? <img className="giro-foto" src={l.foto} alt="" loading="lazy" /> : null}
     <div><b>{x.voce}</b><span>{quanto(x.quantita, x.unita)}: lo scegli tu sul banco</span>

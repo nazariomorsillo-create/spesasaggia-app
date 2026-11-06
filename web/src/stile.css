@@ -5127,3 +5127,16 @@ a.b.pieno-verde {
 .b.pieno-verde.portami { box-shadow: 0 3px 0 #1d5e1a; }
 .foto-auto { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: none; }
 .foto-auto a, .foto-auto .link { font-size: 13px; text-align: center; }
+/* 0.77: il giro a pagine, una per supermercato */
+.giro-schede { position: sticky; top: 0; z-index: 6; display: flex; gap: 8px; overflow-x: auto; padding: 8px 0 10px; background: var(--banco); scrollbar-width: none; }
+.giro-schede::-webkit-scrollbar { display: none; }
+.giro-schede button { flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 8px 14px; border-radius: 999px; border: 2px solid #a9cff1; background: #fff; color: var(--blu-scuro); font: inherit; font-size: 17px; font-weight: 700; cursor: pointer; }
+.giro-schede button.attiva { background: var(--blu-scuro); border-color: var(--blu-scuro); color: #fff; }
+.giro-schede .conta { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 7px; border-radius: 999px; background: var(--marca-azione); color: #fff; font-size: 15px; }
+.giro-schede .conta.fatto { background: var(--verde-scuro); }
+.giro-pagine { position: relative; display: flex; align-items: flex-start; gap: 16px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; transition: height .2s; }
+.giro-pagine::-webkit-scrollbar { display: none; }
+.giro-pagina { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; scroll-snap-stop: always; display: flex; flex-direction: column; gap: 14px; }
+.riepilogo-giro { display: flex; flex-direction: column; gap: 14px; }
+.acquisti.da-spuntare li { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.giro-pagine { scroll-margin-top: 76px; }
