@@ -193,6 +193,19 @@ function Lista({ stato, versione, onParla }) {
   const tutte = lista.dati || [];
   const da = tutte.filter((r) => !r.preso); const presi = tutte.filter((r) => r.preso);
   const daScegliere = da.filter((r) => !r.scelto);
+  // 0.79 (Nazario, 06/11): le cose che hanno già il loro supermercato vanno nelle pagine del giro; qui restano quelle da sistemare
+  const calc = useDati('/api/calcolo'); const [tutta, setTutta] = useState(false);
+  useEffect(() => { if (lista.dati) calc.ricarica(); }, [lista.dati]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dove = new Map(); const pagineGiro = [];
+  if (calc.dati) {
+    const segna = (id, chiave, nome) => { dove.set(id, chiave); let g = pagineGiro.find((x) => x.chiave === chiave); if (!g) { g = { chiave, nome, n: 0 }; pagineGiro.push(g); } g.n++; };
+    for (const n of calc.dati.soluzioni?.[0]?.negozi || []) for (const x of n.righe) segna(x.riga.id, `c${n.catena_id}`, n.catena);
+    for (const g of calc.dati.negoziLiberi || []) for (const l of g.liberi) segna(l.riga.id, `c${g.catena_id}`, g.catena);
+    for (const l of calc.dati.ovunque || []) segna(l.riga.id, 'ovunque', 'Dove capita');
+  }
+  const nelGiro = (r) => r.scelto && dove.has(r.id);
+  const qui = tutta ? da : da.filter((r) => !nelGiro(r));
+  const apriGiro = (chiave) => { mem.scrivi('giro-pagina', chiave); location.hash = '#giro'; };
   const svuota = <button type="button" className="b rosso svuota" onClick={() => { if (confirm('Vuoi svuotare tutta la lista? Le cose già prese e quelle da prendere spariscono.')) fai(api('/api/lista', { metodo: 'DELETE' })); }}>Svuota la lista</button>;
   return (<>
     <div className="intesta">
@@ -217,8 +230,14 @@ function Lista({ stato, versione, onParla }) {
     {tolto && <div className="tolto" role="status"><span>Tolto dalla lista: <b>{tolto.prodotto_id && tolto.scelto ? tolto.prodotto_scelto : tolto.voce}</b></span><button type="button" className="b piccolo" onClick={rimetti}>Annulla</button></div>}
     {err && <div className="errore">{err}</div>}
     {lista.dati && !tutte.length && <InstallaApp />}
-    {tutte.length > 0 && <ul className="foglio" aria-label="La lista della spesa">
-      {da.map((r) => <RigaLista key={r.id} r={r} fai={fai} spunta={spunta} togli={togli} />)}
+    {pagineGiro.length > 0 && <section className="gia-nei-super">
+      <b>Già nei supermercati</b>
+      <div className="gia-tasti">{pagineGiro.map((g) => <button key={g.chiave} type="button" onClick={() => apriGiro(g.chiave)}>{g.nome}<span className="conta">{g.n}</span></button>)}</div>
+      <button type="button" className="link" onClick={() => setTutta(!tutta)}>{tutta ? 'Mostra solo quelle da sistemare' : 'Mostra qui tutta la lista'}</button>
+    </section>}
+    {da.length > 0 && !qui.length && !tutta && <p className="muto">Ogni cosa ha già il suo supermercato: le trovi nelle pagine del giro.</p>}
+    {(qui.length > 0 || presi.length > 0) && <ul className="foglio" aria-label="La lista della spesa">
+      {qui.map((r) => <RigaLista key={r.id} r={r} fai={fai} spunta={spunta} togli={togli} />)}
       {presi.map((r) => <RigaLista key={r.id} r={r} fai={fai} spunta={spunta} togli={togli} />)}
     </ul>}
     {presi.length > 0 && !da.length && <button type="button" className="b pieno grande" onClick={chiudi}><Icona n="spunta" /> Com'è andata la spesa?</button>}
@@ -247,7 +266,7 @@ function RigaLista({ r, fai, spunta, togli }) {
   let sotto;
   if (r.preso) sotto = 'preso';
   else if (conProdotto) sotto = [sup?.confezioni > 1 ? `${sup.confezioni} confezioni` : r.prodotto_quantita > 0 ? '' : quanto(r.quantita, r.unita, false, r.pezzo), sup?.prezzo != null && sup?.confezioni > 1 ? `${euro(sup.prezzo)} in tutto` : ''].filter(Boolean).join(', ');
-  else if (r.scelto && r.libera) sotto = `${quanto(r.quantita, r.unita, false, r.pezzo)}, lo scegli tu al supermercato${r.dove_libera === 'dove capita' ? ', dove capita' : r.dove_libera ? ` da ${r.dove_libera}` : ''}`;
+  else if (r.scelto && r.libera) sotto = `${quanto(r.quantita, r.unita, false, r.pezzo)}, lo scegli tu al supermercato${r.dove_libera === 'dove capita' ? ', dove capita' : r.dove_libera ? ` da ${r.dove_libera}` : ': tocca per dire in quale'}`;
   else if (r.scelto) sotto = `decido io: il più conveniente${tipo ? ` (${tipo})` : ''}`;
   else sotto = `${quanto(r.quantita, r.unita, false, r.pezzo)}${tipo ? `, ${tipo}` : ''}`;
   const testa = <span className="voce-nome"><b>{nome}</b>{conProdotto ? <Semaforo q={r.voto_prodotto} piccolo sempre /> : null}{conProdotto && sup?.catena ? <span className="pill super-lista">{sup.catena}</span> : null}{conProdotto && sup?.scelto_qui && sup.offerta ? <span className="pill offerta">offerta</span> : null}</span>;
@@ -348,6 +367,9 @@ function Ricerca({ onAggiungi, onAvviso, onModulo, inMezzo = null }) {
     return () => { vivo = false; clearTimeout(h); };
   }, [q]);
   const pulisci = () => { setQ(''); setSug(null); };
+  // 0.79: mentre scrivi la casella resta in vista (con la lista lunga e la tastiera aperta finiva fuori dallo schermo)
+  const casella = useRef(null);
+  useEffect(() => { if (q.length === 1) casella.current?.scrollIntoView({ block: 'start' }); }, [q.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
   const fatto = async (p, poi = true) => { setErr(''); try { await onAggiungi(p); pulisci(); if (poi) await vaiAScegliere(); } catch (e) { setErr(e.message); } };
   const prendi = async (x) => {
     setErr(''); setAttesa(true);
@@ -367,7 +389,7 @@ function Ricerca({ onAggiungi, onAvviso, onModulo, inMezzo = null }) {
   if (scansione) return <NuovoDaCodice s={scansione} voci={voci} onFatto={(p, info) => { setScansione(null); location.hash = info?.conPrezzo ? `#prodotto/${p.id}` : `#prodotto/${p.id}/prezzo`; }} onAnnulla={() => setScansione(null)} />;
   const esatta = sug?.some((x) => x.tipo === 'voce' && x.nome.toLowerCase() === q.trim().toLowerCase());
   return <div className="colonna">
-    <form className="cerca" onSubmit={(e) => { e.preventDefault(); if (q.trim()) fatto(perTesto(q.trim())); }}>
+    <form className="cerca" ref={casella} onSubmit={(e) => { e.preventDefault(); if (q.trim()) fatto(perTesto(q.trim())); }}>
       <label className="campo-cerca cerca-grande"><Icona n="cerca" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Scrivi cosa ti serve: latte, pane…" aria-label="Scrivi cosa ti serve" autoComplete="off" enterKeyHint="search" />
         {q && <button type="button" className="cancella" aria-label="Cancella" onClick={pulisci}><Icona n="chiudi" d={22} /></button>}</label>
     </form>

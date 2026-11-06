@@ -5140,3 +5140,11 @@ a.b.pieno-verde {
 .riepilogo-giro { display: flex; flex-direction: column; gap: 14px; }
 .acquisti.da-spuntare li { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .giro-pagine { scroll-margin-top: 76px; }
+/* 0.79: lista con le cose da sistemare; quelle col loro supermercato stanno nel giro */
+.gia-nei-super { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--raggio); background: #eaf4fd; border: 2px solid #a9cff1; }
+.gia-nei-super > b { color: var(--blu-scuro); font-size: 19px; }
+.gia-tasti { display: flex; flex-wrap: wrap; gap: 8px; }
+.gia-tasti button { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 8px 14px; border-radius: 999px; border: 2px solid #a9cff1; background: #fff; color: var(--blu-scuro); font: inherit; font-size: 17px; font-weight: 700; cursor: pointer; }
+.gia-tasti .conta { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 7px; border-radius: 999px; background: var(--marca-azione); color: #fff; font-size: 15px; }
+.gia-nei-super .link { align-self: flex-start; }
+form.cerca { position: sticky; top: 0; z-index: 7; background: var(--banco); padding-block: 6px; scroll-margin-top: 0; }
