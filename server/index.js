@@ -12,7 +12,7 @@ import * as mappe from './mappe.js';
 import * as off from './off.js';
 import { punteggio as punteggioBase, valore, QUALITA_MINIMA, additiviDi, giudizio, leggiFormato, dettaglio as dettaglioBase } from './qualita.js';
 import { codice, daIngredienti, elenco as elencoAdditivi } from './additivi.js';
-import { capisci, trovaVoce, indovina, maiuscola, radici } from './voce.js';
+import { capisci, trovaVoce, indovina, maiuscola, radici, generica } from './voce.js';
 import { accesso } from './accesso.js';
 import * as catalogo from './catalogo.js';
 import { cercaFoto } from './foto-auto.js';
@@ -1090,9 +1090,10 @@ app.get('/api/suggerisci', async (req) => {
   const specifiche = (w) => { const r = radiceC(w); const g = generiche.find(([k]) => r.startsWith(k) || (r.length >= 5 && k.startsWith(r))); return g ? g[1] : []; };
   const trova = (w, ts, t) => { const r = radiceC(w); const s = specifiche(w);
     const c4 = w.length === 4 ? w.replace(/[aeio]$/, '') : '';
-    return ts.some((x) => x.startsWith(w) || (r.length >= 4 && x.startsWith(r)) || (c4 && x.length <= 5 && x.replace(/[aeio]$/, '') === c4)
+    // 0.81: con una radice corta (zucc, latt) solo parole di lunghezza simile: zucca/zucche sì, zuccheri no; latte sì, lattuga no
+    return ts.some((x) => x.startsWith(w) || (r.length >= 5 && x.startsWith(r)) || (r.length === 4 && x.startsWith(r) && x.length <= 6) || (c4 && x.length <= 5 && x.replace(/[aeio]$/, '') === c4)
       || (w.length >= 6 && (quasiUguali(x, w) || quasiUguali(radiceC(x), r))) || s.some((y) => x.startsWith(y)))
-      || (w.length >= 4 && t.includes(r)); };
+      || (r.length >= 5 && t.includes(r)); }; // 0.81: dentro un'altra parola solo se lunga («zucca» non è in «zuccheri»)
   const quanteParole = (testo) => { const t = parolaCerca(testo); const ts = t.split(/\s+/).filter(Boolean); return parole.filter((w) => trova(w, ts, t)).length; };
   const tutteLeParole = (testo) => quanteParole(testo) === parole.length;
   const abituali = abitualiDi(req); const mie = new Set(mieCatene(req) || []);
@@ -1180,7 +1181,8 @@ function voceEsistenteOff(o, voci, prodotti) {
   return null;
 }
 function nomeVoceNuovaOff(o) {
-  const cat = (o.categorie || []).at(-1) || ''; const gen = o.generico || '';
+  // 0.81: una categoria generica («Carni») non fa da nome: meglio il nome del prodotto senza marca («Petto pollo»)
+  const cat0 = (o.categorie || []).at(-1) || ''; const cat = generica(cat0) ? '' : cat0; const gen = generica(o.generico) ? '' : o.generico || '';
   return maiuscola((cat && cat.split(' ').length <= 3 ? cat : gen || cat || senzaMarcaDi(o)(o.nome) || o.nome).slice(0, 60).toLowerCase());
 }
 async function preparaOff(o) {

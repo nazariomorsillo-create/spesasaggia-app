@@ -125,9 +125,12 @@ function punteggio(nomeDetto, nomeVoce) {
 }
 
 // Cerca la voce giusta: prima il nome della voce, poi i prodotti (nome o marca: "nutella" → crema di nocciole, marca Nutella)
+// 0.81: nomi di categoria («Carni», «Formaggi», «Verdure»): non sono una cosa da comprare. «Carne di manzo» non va dentro «Carni»
+export const CATEGORIE_GENERICHE = new Set(['carni', 'carne', 'formaggi', 'salumi', 'latticini', 'pesce', 'pesci', 'verdure', 'ortaggi', 'frutta', 'bevande', 'bibite', 'dolci', 'snack', 'surgelati', 'condimenti', 'cereali', 'legumi', 'alimenti', 'cibi', 'spezie', 'conserve', 'prodotti', 'cibi a base vegetale', 'alimenti a base vegetale', 'carni e derivati', 'prodotti lattiero-caseari', 'piatti pronti', 'colazione', 'dessert']);
+export const generica = (nome) => CATEGORIE_GENERICHE.has(String(nome || '').trim().toLowerCase());
 export function trovaVoce(nome, voci, prodotti) {
   let meglio = null;
-  for (const v of voci) { const p = punteggio(nome, v.nome); if (p && (!meglio || p > meglio.p)) meglio = { v, p }; }
+  for (const v of voci) { const p = punteggio(nome, v.nome); if (p && !(p < 100 && generica(v.nome)) && (!meglio || p > meglio.p)) meglio = { v, p }; }
   if (meglio && meglio.p >= 70) return { voce: meglio.v, marca: 'qualsiasi', p: meglio.p };
   for (const p of prodotti) {
     const v = voci.find((x) => x.id === p.voce_id); if (!v) continue;

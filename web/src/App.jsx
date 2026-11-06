@@ -164,6 +164,7 @@ export async function vaiAScegliere(prima = null, libera = false) {
   const da = (prima ? l.filter((x) => !prima.has(x.id)) : l).find((x) => !x.preso && !x.scelto);
   if (da && libera) await api(`/api/lista/${da.id}/scegli`, { metodo: 'POST', corpo: { libera: true } });
   if (da) location.hash = `#scegli/${da.id}`;
+  l.aperta = da?.id || null;
   return l;
 }
 function Lista({ stato, versione, onParla }) {
@@ -322,7 +323,9 @@ const QUALITA_DI = { economico: 'qualsiasi', italiano: 'italiano', bio: 'bio' };
 async function perTesto(testo, extra = {}) {
   const r = await api('/api/lista/voce', { metodo: 'POST', corpo: { testo } });
   if (!r.capito.length) throw new Error(`Non ho capito cosa mettere in lista con «${testo}»`);
-  return api('/api/lista/voce/conferma', { metodo: 'POST', corpo: { righe: r.capito.map((c) => ({ ...c, ...extra })) } });
+  const l = await api('/api/lista/voce/conferma', { metodo: 'POST', corpo: { righe: r.capito.map((c) => ({ ...c, ...extra })) } });
+  l.capito = r.capito.map((c) => c.nome); // 0.81: per dire «era già in lista» se non nasce una riga nuova
+  return l;
 }
 const DISTINTIVI = { scelta: 'Miglior rapporto qualità/prezzo', economico: 'Il più conveniente', qualita: 'Qualità più alta' };
 // il formato scritto per esteso: «6 × 1,5 litri (9 litri)», «sfuso, a peso»
@@ -376,7 +379,11 @@ function Ricerca({ onAggiungi, onAvviso, onModulo, inMezzo = null }) {
   // si guarda cosa c'era in lista PRIMA di aggiungere, così poi si apre la scelta della cosa nuova
   const fatto = async (aggiungi, libera = false) => {
     setErr('');
-    try { const prima = new Set((await api('/api/lista')).map((x) => x.id)); await onAggiungi(aggiungi()); pulisci(); await vaiAScegliere(prima, libera); }
+    try {
+      const prima = new Set((await api('/api/lista')).map((x) => x.id)); const p = aggiungi(); await onAggiungi(p); const nuova = await p; pulisci();
+      const l = await vaiAScegliere(prima, libera);
+      if (!l.aperta) onAvviso?.(`«${(nuova.capito || []).join(', ')}» era già nella tua lista: ho aggiornato quella riga.`);
+    }
     catch (e) { setErr(e.message); }
   };
   const prendi = async (x) => {
