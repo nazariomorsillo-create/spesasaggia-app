@@ -48,7 +48,8 @@ const dettaglio = (p, v = null) => dettaglioBase(conVoce(p), v);
 const app = Fastify({ logger: false, bodyLimit: 5 * 1024 * 1024 });
 // ---------- intestazioni di sicurezza su ogni risposta ----------
 // la pagina carica solo i suoi file; immagini anche da Open Food Facts e dalla mappa; niente pagine dentro altri siti
-const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob: https://*.openfoodfacts.org https://*.openfoodfacts.net https://tile.openstreetmap.org https://*.tile.openstreetmap.org",
+// 0.92: wasm-unsafe-eval serve al lettore dei codici a barre (ZXing in WebAssembly, file nostro); non permette script esterni
+const CSP = ["default-src 'self'", "script-src 'self' 'wasm-unsafe-eval'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob: https://*.openfoodfacts.org https://*.openfoodfacts.net https://tile.openstreetmap.org https://*.tile.openstreetmap.org",
   "font-src 'self' data:", "connect-src 'self'", "media-src 'self' blob:", "worker-src 'self' blob:", "manifest-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'"].join('; ');
 const inLocale = (req) => /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(String(req.headers.host || ''));
 app.addHook('onSend', async (req, rep, payload) => {

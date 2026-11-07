@@ -1,6 +1,6 @@
 {
   "name": "giro-spesa",
-  "version": "0.91.0",
+  "version": "0.92.0",
   "private": true,
   "description": "La spesa al prezzo più basso fra i supermercati, con il giro più comodo - WS Solution SRL",
   "type": "module",
@@ -22,7 +22,8 @@
     "fastify": "^5.12.7",
     "leaflet": "^1.9.4",
     "qrcode": "^1.5.4",
-    "tesseract.js": "^6.0.1"
+    "tesseract.js": "^6.0.1",
+    "zxing-wasm": "^3.1.6"
   },
   "devDependencies": {
     "@fontsource/atkinson-hyperlegible": "^5.3.0",

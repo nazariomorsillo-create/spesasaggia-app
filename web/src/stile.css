@@ -2500,6 +2500,8 @@ main {
 .scanner-box {
   grid-column: 1/-1;
   position: relative;
+  overflow: hidden;
+  border-radius: 14px;
 }
 .scanner-box .mirino {
   pointer-events: none;
@@ -5285,4 +5287,9 @@ body::before {
 .acquisti li .conferma-togli > span {
   color: var(--inchiostro);
   font-size: inherit;
+}
+/* 0.92 riga di diagnostica sotto il lettore del codice a barre */
+.diag-codice {
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
 }
