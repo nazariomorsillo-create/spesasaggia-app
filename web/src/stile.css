@@ -5230,3 +5230,59 @@ body::before {
   color: var(--marca-scura);
   font-weight: 700;
 }
+/* 0.88 cestino accanto al nome, con «Eliminare? Sì / No» sulla riga */
+.nome-cestino {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 4px 8px;
+  display: flex;
+}
+.nome-cestino > b {
+  flex: 1;
+  min-width: 0;
+}
+.nome-cestino .cestino {
+  width: 40px;
+  height: 40px;
+  margin: -6px -6px 0 0;
+}
+.cestino.attivo {
+  background: var(--pomodoro-tenue);
+  color: var(--pomodoro);
+}
+.conferma-togli {
+  background: var(--pomodoro-tenue);
+  border-radius: 12px;
+  flex-basis: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  font-weight: 700;
+  display: flex;
+}
+.conferma-togli > span {
+  flex: 1;
+}
+.conferma-togli .b {
+  min-width: 64px;
+}
+.conferma-togli .b.si {
+  background: var(--pomodoro);
+  color: #fff;
+}
+.voce-riga .conferma-togli {
+  grid-area: 4 / 1 / auto / -1;
+}
+.pill.per-dopo {
+  color: var(--tenue);
+  background: #fff;
+  border: 1px dashed var(--linea);
+  white-space: normal;
+}
+.acquisti li .nome-cestino,
+.acquisti li .conferma-togli,
+.acquisti li .conferma-togli > span {
+  color: var(--inchiostro);
+  font-size: inherit;
+}

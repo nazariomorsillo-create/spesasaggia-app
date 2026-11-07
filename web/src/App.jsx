@@ -141,8 +141,8 @@ export default function App() {
     </main>
     <nav className="dock" aria-label="Sezioni">
       <a href="#lista" aria-current={sezione === 'lista' ? 'page' : undefined}><Icona n="lista" />La lista</a>
-      <a href="#offerte" aria-current={sezione === 'offerte' ? 'page' : undefined}><Icona n="offerta" />Offerte{s?.offerte > 0 && <span className="conta" aria-label={`${s.offerte} offerte`}>{s.offerte > 99 ? '99+' : s.offerte}</span>}</a>
       <a href="#giro" aria-current={sezione === 'giro' ? 'page' : undefined}><Icona n="negozio" />Il giro</a>
+      <a href="#offerte" aria-current={sezione === 'offerte' ? 'page' : undefined}><Icona n="offerta" />Offerte{s?.offerte > 0 && <span className="conta" aria-label={`${s.offerte} offerte`}>{s.offerte > 99 ? '99+' : s.offerte}</span>}</a>
       <a href="#altro" aria-current={sezione === 'altro' ? 'page' : undefined}><Icona n="altro" />Altro</a>
     </nav>
     {parla && <Parla mic={mic} proposte={proposte} setProposte={setProposte} attesa={attesa} onTesto={capito} onChiudi={() => { setParla(false); setProposte([]); }} onFatto={conferma} />}
@@ -185,7 +185,7 @@ function Lista({ stato, versione, onParla }) {
   useEffect(() => { if (!tolto) return undefined; const t = setTimeout(() => setTolto(null), 7000); return () => clearTimeout(t); }, [tolto]);
   const togli = async (r) => {
     setErr(''); lista.setDati((l) => l.filter((x) => x.id !== r.id));
-    try { lista.setDati(await api(`/api/lista/${r.id}`, { metodo: 'DELETE' })); setTolto(r); } catch (e) { setErr(e.message); lista.ricarica(); }
+    try { lista.setDati(await api(`/api/lista/${r.id}`, { metodo: 'DELETE' })); } catch (e) { setErr(e.message); lista.ricarica(); }
   };
   const rimetti = () => {
     const r = tolto; setTolto(null);
@@ -287,7 +287,7 @@ function RigaLista({ r, fai, spunta, togli }) {
         : <a className="voce-testo" href={`#scegli/${r.id}`}>{testa}{sotto ? <span>{sotto}</span> : null}{r.scelto ? <span className="cambia-qui">Cambia</span> : null}</a>}
       {!r.preso && !r.scelto && <a className="b pieno piccolo scegli" href={`#scegli/${r.id}`}>Scegli</a>}
       {conProdotto && sup?.uno != null && <span className="cartellino-col voce-prezzo"><Cartellino n={sup.uno} /><small>{r.prodotto_quantita > 0 ? 'la confezione' : alUnita}</small></span>}
-      <button type="button" className="cestino" aria-label={`Togli ${nome} dalla lista`} onClick={() => togli(r)}><Icona n="cestino" d={24} /></button>
+      <Cestino nome={nome} onSi={() => togli(r)} />
     </div>
     {altrove && <div className="altrove-riga">
       <p><span className="pill offerta">Offerta</span> da <b>{altrove.catena}</b> a <b>{euro(altrove.prezzo)}</b>{altrove.confezioni > 1 ? ` (${altrove.confezioni} confezioni)` : ''}: risparmi <b>{euro(altrove.risparmio)}</b>{altrove.valido_al ? `, fino al ${data(altrove.valido_al)}` : ''}</p>
@@ -471,8 +471,6 @@ function Giro({ annuncio, tutto = false }) {
   // 0.72: si spunta anche qui (vale per la lista); quello che non trovi lo lasci e resta in lista per la prossima volta
   const [presi, setPresi] = useState(() => new Set()); const [nonCera, setNonCera] = useState(() => new Set(nonTrovatiOggi()));
   const [msg, setMsg] = useState('');
-  const [tolto, setTolto] = useState(null);
-  useEffect(() => { if (!tolto) return undefined; const t = setTimeout(() => setTolto(null), 7000); return () => clearTimeout(t); }, [tolto]);
   const miei = useDati(tutto ? null : '/api/supermercati-giro');
   if (c.errore) return <div className="errore">{c.errore}</div>;
   if (!c.dati) return <p className="muto">Confronto i supermercati…</p>;
@@ -496,21 +494,11 @@ function Giro({ annuncio, tutto = false }) {
     const n2 = new Set(nonCera); if (n2.has(riga.id)) n2.delete(riga.id); else { n2.add(riga.id); setMsg(`«${riga.voce}» resta in lista: lo prendi la prossima volta.`); }
     setNonCera(n2); mem.scrivi('non-trovati', { giorno: oggiIso(), righe: [...n2] });
   };
-  // 0.86 (Nazario, 07/11): cestino anche nel giro, per le cose già comprate o messe per sbaglio; per 7 secondi «Annulla» la rimette
+  // 0.88 (Nazario, 07/11): cestino accanto al nome; si chiede solo «Eliminare? Sì / No», poi sparisce (nessun avviso che resta)
   const togli = async (riga) => {
     setMsg('');
-    try {
-      const intera = (await api('/api/lista')).find((x) => x.id === riga.id) || null;
-      await api(`/api/lista/${riga.id}`, { metodo: 'DELETE' });
-      setTolto(intera); await c.ricarica(); dispatchEvent(new Event('lista-cambiata'));
-    } catch (e) { setMsg(e.message); }
+    try { await api(`/api/lista/${riga.id}`, { metodo: 'DELETE' }); await c.ricarica(); dispatchEvent(new Event('lista-cambiata')); } catch (e) { setMsg(e.message); }
   };
-  const rimetti = async () => {
-    const r0 = tolto; setTolto(null); if (!r0) return;
-    try { await api('/api/lista', { metodo: 'POST', corpo: { voce_id: r0.voce_id, prodotto_id: r0.prodotto_id, quantita: r0.quantita, qualita: r0.qualita, marca: r0.marca, scelto: !!r0.scelto } }); await c.ricarica(); dispatchEvent(new Event('lista-cambiata')); }
-    catch (e) { setMsg(e.message); }
-  };
-  const avvisoTolto = tolto && <div className="tolto galleggia" role="status"><span>Tolto dalla lista: <b>{tolto.prodotto_id && tolto.scelto ? tolto.prodotto_scelto || tolto.voce : tolto.voce}</b></span><button type="button" className="b piccolo" onClick={rimetti}>Annulla</button></div>;
   const propLib = { scelte, onSposta: sposta, presi, nonCera, onSpunta: spunta, onNonCera: nonTrovato, onTogli: togli };
   if (!tutto) {
     // 0.77 (Nazario, 06/11): una pagina per supermercato, si scorre col dito; in alto i nomi con quante cose restano
@@ -537,7 +525,6 @@ function Giro({ annuncio, tutto = false }) {
     </div>;
     if (pagine.length) pagine.push({ chiave: 'riepilogo', titolo: 'Riepilogo', el: riepilogo });
     return (<>
-      {avvisoTolto}
       <a className="b tenue-marca torna-lista torna-su" href="#lista"><Icona n="indietro" d={22} /> Torna alla lista e aggiungi</a>
       <div className="intesta"><h1>Il giro della spesa</h1>{r.righe.length > 0 && <p>Scorri col dito da un supermercato all'altro. Tocca un prodotto per depennarlo.</p>}</div>
       {!r.righe.length && <div className="vuota"><p>La lista è vuota: prima scrivi o detta cosa ti serve.</p><a className="b pieno grande" href="#lista">Vai alla lista</a></div>}
@@ -550,7 +537,6 @@ function Giro({ annuncio, tutto = false }) {
     </>);
   }
   return (<>
-    {avvisoTolto}
     {!tutto && <a className="b tenue-marca torna-lista torna-su" href="#lista"><Icona n="indietro" d={22} /> Torna alla lista e aggiungi</a>}
     <div className="intesta"><h1>{tutto ? 'Com\'è andata la spesa' : 'Il giro della spesa'}</h1>{r.righe.length > 0 && <p>{tutto ? `Per ${r.righe.length === 1 ? '1 cosa' : `${r.righe.length} cose`} della tua lista` : 'Ogni supermercato ha la sua lista: vai da uno oggi e dagli altri quando vuoi. Spunta quello che prendi; quello che non trovi resta in lista.'}</p>}</div>
     {!r.righe.length && !tutto && <div className="vuota"><p>La lista è vuota: prima scrivi o detta cosa ti serve.</p><a className="b pieno grande" href="#lista">Vai alla lista</a></div>}
@@ -633,22 +619,28 @@ function Negozio({ n, liberi = [], propLib, presi, nonCera, onSpunta, onNonCera 
       return <li key={x.riga.id} className={`${preso ? 'preso' : ''}${manca ? ' non-cera' : ''}`} onClick={(e) => { if (!e.target.closest('button, a')) onSpunta(x.riga, n.catena_id); }}>
         <button type="button" className="spunta" role="checkbox" aria-checked={preso} aria-label={`${x.riga.voce}: ${preso ? 'preso' : 'da prendere'}`} onClick={() => onSpunta(x.riga, n.catena_id)}>{preso ? <Icona n="spunta" d={28} /> : null}</button>
         {x.foto ? <img className="giro-foto" src={x.foto} alt="" loading="lazy" /> : null}
-        <div><b>{x.riga.voce}</b><span>{x.confezioni ? `${x.confezioni} ${x.confezioni === 1 ? 'confezione' : 'confezioni'}` : quanto(x.riga.quantita, x.riga.unita)}: {x.prodotto}</span>
+        <div><span className="nome-cestino"><b>{x.riga.voce}</b>{!preso && propLib.onTogli && <Cestino nome={x.riga.voce} onSi={() => propLib.onTogli(x.riga)} />}</span><span>{x.confezioni ? `${x.confezioni} ${x.confezioni === 1 ? 'confezione' : 'confezioni'}` : quanto(x.riga.quantita, x.riga.unita)}: {x.prodotto}</span>
           <span className="etichette"><Semaforo q={x.qualita} piccolo sempre /><Etichette p={x} />{x.offerta && <span className="pill offerta">offerta</span>}<StatoPrezzo s={x.stato} al={x.valido_al} /></span>
         </div>
         <Cartellino n={x.costo} />
         {!preso && <div className="libera-azioni non-cera-tasto">
-          <button type="button" className="link" onClick={() => onNonCera(x.riga)}>{manca ? 'Rimetti: l\'ho trovato' : 'Non c\'era: resta in lista'}</button>
+          {manca ? <span className="pill per-dopo">Per la prossima volta: resta in lista</span> : <button type="button" className="link" onClick={() => onNonCera(x.riga)}>Non c'era: tienilo per dopo</button>}
           <AltroSuper riga={x.riga} qui={n.catena_id} scelte={propLib.scelte} onSposta={propLib.onSposta} />
-          {propLib.onTogli && <TogliGiro onTogli={() => propLib.onTogli(x.riga)} />}
         </div>}</li>; })}</ul>
     {fatti > 0 && <p className="muto">{fatti === tutte.length ? `Da ${n.catena} hai preso tutto.` : `Presi ${fatti} su ${tutte.length}.`}</p>}
     <a className="b pieno-verde portami" href={strada(n)} target="_blank" rel="noopener"><Icona n="mappa" /> Portami da {n.catena}</a>
   </section>;
 }
 // 0.74: una cosa generica nel giro: la scegli tu sul banco, nel supermercato che hai scelto tu (lo puoi cambiare); il prezzo è indicativo
-function TogliGiro({ onTogli }) {
-  return <button type="button" className="link togli-giro" onClick={onTogli}><Icona n="cestino" d={20} /> Togli dalla lista</button>;
+// 0.88: il cestino chiede solo conferma, lì sulla riga
+function Cestino({ nome, onSi }) {
+  const [chiedi, setChiedi] = useState(false);
+  return <>
+    <button type="button" className={`cestino${chiedi ? ' attivo' : ''}`} aria-label={`Togli ${nome} dalla lista`} aria-expanded={chiedi} onClick={() => setChiedi(!chiedi)}><Icona n="cestino" d={24} /></button>
+    {chiedi && <span className="conferma-togli" role="group" aria-label={`Eliminare ${nome}?`}><span>Eliminare?</span>
+      <button type="button" className="b piccolo si" onClick={() => { setChiedi(false); onSi(); }}>Sì</button>
+      <button type="button" className="b piccolo" onClick={() => setChiedi(false)}>No</button></span>}
+  </>;
 }
 function RigaLibera({ l, qui = null, chiedi = false, scelte = [], onSposta, presi, nonCera, onSpunta, onNonCera, onTogli }) {
   const x = l.riga; const preso = presi.has(x.id); const manca = !preso && nonCera.has(x.id);
@@ -657,15 +649,14 @@ function RigaLibera({ l, qui = null, chiedi = false, scelte = [], onSposta, pres
   return <li className={`libera-giro${preso ? ' preso' : ''}${manca ? ' non-cera' : ''}`} onClick={(e) => { if (!chiedi && !e.target.closest('button, a')) onSpunta(x, qui); }}>
     <button type="button" className="spunta" role="checkbox" aria-checked={preso} aria-label={`${x.voce}: ${preso ? 'preso' : 'da prendere'}`} onClick={() => onSpunta(x, qui)}>{preso ? <Icona n="spunta" d={28} /> : null}</button>
     {l.foto ? <img className="giro-foto" src={l.foto} alt="" loading="lazy" /> : null}
-    <div><b>{x.voce}</b><span>{quanto(x.quantita, x.unita)}: {x.libera ? 'lo scegli tu sul banco' : x.prodotto_scelto || 'il prodotto che hai scelto'}</span>
+    <div><span className="nome-cestino"><b>{x.voce}</b>{!preso && onTogli && <Cestino nome={x.voce} onSi={() => onTogli(x)} />}</span><span>{quanto(x.quantita, x.unita)}: {x.libera ? 'lo scegli tu sul banco' : x.prodotto_scelto || 'il prodotto che hai scelto'}</span>
       <span className="etichette">{x.libera ? <span className="pill bolla-libera">Scegli al supermercato</span> : <span className="pill super-lista">spostato qui</span>}{l.da != null && <span className="muto piccolo">{x.libera ? 'da circa ' : ''}{euro(l.da)}</span>}</span></div>
     {!preso && <div className="libera-azioni">
-      {!chiedi && <button type="button" className="link non-cera-tasto" onClick={() => onNonCera(x)}>{manca ? 'Rimetti: l\'ho trovato' : 'Non c\'era: resta in lista'}</button>}
+      {!chiedi && (manca ? <span className="pill per-dopo">Per la prossima volta: resta in lista</span> : <button type="button" className="link non-cera-tasto" onClick={() => onNonCera(x)}>Non c'era: tienilo per dopo</button>)}
       {chiedi || cambia
         ? <div className="scelte">{altre.map((c) => <button key={c.id} type="button" onClick={() => { setCambia(false); onSposta(x, c.id); }}>{c.nome}</button>)}</div>
         : <button type="button" className="link" onClick={() => setCambia(true)}>{x.libera ? 'Cambia supermercato' : 'Compralo in un altro supermercato'}</button>}
       {!x.libera && <button type="button" className="link" onClick={() => onSposta(x, '')}>Rimettilo dove conviene</button>}
-      {onTogli && <TogliGiro onTogli={() => onTogli(x)} />}
     </div>}
   </li>;
 }
