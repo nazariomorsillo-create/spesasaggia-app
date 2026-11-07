@@ -401,7 +401,7 @@ function Ricerca({ onAggiungi, onAvviso, onModulo, inMezzo = null }) {
   };
   // salvato: alla scheda; il prezzo si chiede ancora solo se non l'ha scritto nel modulo
   // 0.82: prodotto che non conosce nessuno → percorso veloce (due foto, prezzo, salva); se forse c'è già → il modulo con «È questo?»
-  if (scansione && !scansione.proposta) return <NuovoVeloce ean={scansione.ean} avviso={scansione.avviso} onFatto={(p, info) => { setScansione(null); location.hash = info?.conPrezzo ? `#prodotto/${p.id}` : `#prodotto/${p.id}/prezzo`; }} onAnnulla={() => setScansione(null)} />;
+  if (scansione && !scansione.proposta) return <NuovoVeloce ean={scansione.ean} avviso={scansione.avviso} onFatto={(p, info) => { setScansione(null); location.hash = info?.manca ? `#prodotto/${p.id}/manca` : info?.conPrezzo ? `#prodotto/${p.id}` : `#prodotto/${p.id}/prezzo`; }} onAnnulla={() => setScansione(null)} />;
   if (scansione) return <NuovoDaCodice s={scansione} voci={voci} onFatto={(p, info) => { setScansione(null); location.hash = info?.conPrezzo ? `#prodotto/${p.id}` : `#prodotto/${p.id}/prezzo`; }} onAnnulla={() => setScansione(null)} />;
   const esatta = sug?.some((x) => x.tipo === 'voce' && x.nome.toLowerCase() === q.trim().toLowerCase());
   return <div className="colonna">

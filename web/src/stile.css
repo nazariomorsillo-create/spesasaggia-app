@@ -5293,3 +5293,46 @@ body::before {
   font-variant-numeric: tabular-nums;
   word-break: break-word;
 }
+/* 0.94 pagina dei prezzi: foto e formato di ogni prodotto; «È questo?» subito dopo la lettura */
+.confronto-prodotto {
+  align-items: flex-start;
+  gap: 12px;
+  display: flex;
+}
+.confronto-foto {
+  object-fit: cover;
+  background: #fff;
+  border: 1px solid var(--linea);
+  border-radius: 10px;
+  flex: none;
+  width: 64px;
+  height: 64px;
+}
+.confronto-foto.vuota {
+  color: var(--tenue);
+  justify-content: center;
+  align-items: center;
+  display: flex;
+}
+.gia-ce-subito .b.pieno {
+  justify-content: flex-start;
+  text-align: left;
+  gap: 10px;
+}
+.gia-ce-subito .b.pieno small {
+  opacity: .85;
+  font-weight: 400;
+}
+.gia-ce-subito .mini-foto {
+  object-fit: cover;
+  background: #fff;
+  border-radius: 8px;
+  flex: none;
+  width: 44px;
+  height: 44px;
+}
+.cosa-manca .manca-qui {
+  color: var(--marca-scura);
+  margin: 0;
+  font-weight: 700;
+}

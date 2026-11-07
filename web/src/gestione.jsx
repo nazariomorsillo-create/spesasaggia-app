@@ -1,7 +1,7 @@
 // Gestione (per chi carica prezzi e prodotti): rilevazione, schede, confronto, negozi, scontrini, impostazioni, pubblicità.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { lettoreCodici } from './codice.js';
-import { api, useDati, euro, num, data, UNITA, QUALITA, REPARTI, TIPI, conVirgola, Etichette, StatoPrezzo, mem, ScattaFoto, ScegliCatena, FormatoConfezione, FORMATO_VUOTO, UNITA_FORMATO, datiFormato, numeroDa, Semaforo, Icona, riduciFoto, quanto, Cartellino, plurale } from './base.jsx';
+import { api, useDati, euro, num, data, UNITA, QUALITA, REPARTI, TIPI, conVirgola, Etichette, StatoPrezzo, mem, ScattaFoto, ScegliCatena, FormatoConfezione, FORMATO_VUOTO, UNITA_FORMATO, datiFormato, numeroDa, Semaforo, Icona, riduciFoto, quanto, Cartellino, plurale, perUnita } from './base.jsx';
 
 function CercaVoce({ onScelta, etichetta = 'Cosa compri?', voci, ricaricaVoci }) {
   const [q, setQ] = useState(''); const [nuova, setNuova] = useState(null); const [err, setErr] = useState('');
@@ -490,9 +490,16 @@ function Confronto({ id, stato }) {
         <span className="muto piccolo">Per i prodotti per la casa: il confronto si fa al lavaggio, al rotolo… Il formato di ogni prodotto va scritto in quei pezzi (es. 40 lavaggi).</span></div>}
       {prodotti.map((p) => <div key={p.id} className="negozio-giro">
         {/* 0.72: il nome apre la scheda; sotto due pulsanti chiari. «Modifica» grigio in alto a destra apriva il modulo in fondo alla pagina e sembrava non fare niente */}
-        <a href={`#prodotto/${p.id}`}><b>{p.nome}</b></a>
+        {/* 0.94: foto e formato, per distinguere i prodotti a colpo d'occhio */}
+        <div className="confronto-prodotto">
+          {p.foto ? <img className="confronto-foto" src={p.foto} alt="" loading="lazy" /> : <span className="confronto-foto vuota" aria-hidden="true"><Icona n="foto" d={22} /></span>}
+          <div className="colonna" style={{ gap: 4, minWidth: 0 }}>
+            <a href={`#prodotto/${p.id}`}><b>{p.nome}</b></a>
+            {(p.sfuso || p.quantita > 0) && <span className="formato-chiaro">{p.sfuso ? `sfuso, al ${perUnita(voce.unita, voce.pezzo)}` : `${p.pezzi > 1 ? `${p.pezzi} × ` : ''}${quanto(p.pezzi > 1 ? p.quantita / p.pezzi : p.quantita, voce.unita, false, voce.pezzo)}${p.pezzi > 1 ? ` (${quanto(p.quantita, voce.unita, false, voce.pezzo)})` : ''}`}</span>}
+          </div>
+        </div>
         <div className="riga" style={{ gap: 8, flexWrap: 'wrap' }}><Semaforo q={p.qualita} piccolo sempre /><Etichette p={{ ...p, confrontabile: !!p.sfuso || p.quantita > 0 }} />{p.origine === '' && <span className="muto piccolo">Origine da indicare</span>}</div>
-        {p.prezzi.length ? <ul className="prezzi-scheda">{p.prezzi.map((x) => <RigaPrezzoTab key={`${x.id}-${x.prezzo}-${x.offerta}`} x={x} unita={voce.unita} onFatto={() => c.ricarica()} />)}</ul> : <span className="muto piccolo">Nessun prezzo rilevato.</span>}
+        {p.prezzi.length ? <ul className="prezzi-scheda">{p.prezzi.map((x) => <RigaPrezzoTab key={`${x.id}-${x.prezzo}-${x.offerta}`} x={x} unita={voce.unita === 'kg' ? 'kg' : voce.unita === 'l' ? 'litro' : (voce.pezzo || 'pezzo')} senzaFormato={!p.sfuso && !(p.quantita > 0)} onFatto={() => c.ricarica()} />)}</ul> : <span className="muto piccolo">Nessun prezzo rilevato.</span>}
         <div className="confronto-azioni">
           <a className="b piccolo contorno" href={`#prodotto/${p.id}/prezzo`}>Aggiungi un prezzo</a>
           <button type="button" className="b piccolo" onClick={() => setModifica(modifica?.id === p.id ? null : p)}>Modifica la scheda</button>
@@ -503,7 +510,7 @@ function Confronto({ id, stato }) {
   </>;
 }
 // 0.72: una riga di prezzo da correggere sul posto: tocchi «Correggi», scrivi il prezzo, salvi (un solo prezzo per supermercato, quello giusto)
-function RigaPrezzoTab({ x, unita, onFatto }) {
+function RigaPrezzoTab({ x, unita, senzaFormato = false, onFatto }) {
   const [apri, setApri] = useState(false); const [v, setV] = useState(String(x.prezzo).replace('.', ',')); const [off, setOff] = useState(!!x.offerta); const [err, setErr] = useState('');
   const salva = async () => { setErr(''); try { await api(`/api/prezzi/${x.id}`, { metodo: 'PUT', corpo: { prezzo: v, offerta: off, valido_dal: off ? x.valido_dal || '' : '', valido_al: off ? x.valido_al || '' : '' } }); setApri(false); onFatto(); } catch (e) { setErr(e.message); } };
   return <li className={apri ? 'aperto' : ''}>
@@ -511,7 +518,7 @@ function RigaPrezzoTab({ x, unita, onFatto }) {
       <div><b>{x.catena}</b><span>rilevato il {data(x.rilevato_il)}{x.valido_al ? `, offerta ${data(x.valido_dal)}–${data(x.valido_al)}` : ''}</span>
         <span className="etichette">{x.offerta ? <span className="pill offerta">offerta</span> : null}<StatoPrezzo s={x.stato} /></span>
       </div>
-      <div className="dx"><Cartellino n={x.prezzo} /><span className="muto piccolo">= {euro(x.unitario)} al {unita}</span></div>
+      <div className="dx"><Cartellino n={x.prezzo} /><span className="muto piccolo">{senzaFormato ? `al ${unita}: manca il formato` : `= ${euro(x.unitario)} al ${unita}`}</span></div>
     </div>
     {!apri && <div className="confronto-azioni riga-tasti-prezzo"><button type="button" className="b piccolo contorno correggi-prezzo" onClick={() => { setV(String(x.prezzo).replace('.', ',')); setOff(!!x.offerta); setErr(''); setApri(true); }}>Correggi il prezzo</button>
       <button type="button" className="b rosso piccolo correggi-prezzo" aria-label="Cancella il prezzo" onClick={async () => { if (confirm('Cancello questo prezzo?')) { await api(`/api/prezzi/${x.id}`, { metodo: 'DELETE' }); onFatto(); } }}>✕</button></div>}
@@ -747,6 +754,19 @@ function NuovoVeloce({ ean, avviso, onFatto, onAnnulla }) {
   const [voce, setVoce] = useState(null); const [cambiaVoce, setCambiaVoce] = useState(false); const voci = useDati(cambiaVoce ? '/api/voci' : null);
   const [simili, setSimili] = useState(null); const [err, setErr] = useState(''); const [attesa, setAttesa] = useState(false); const [prepara, setPrepara] = useState('');
   const camera = useRef(null); const galleria = useRef(null); const chi = useRef('davanti');
+  // 0.94 (Nazario, 07/11): «È questo?» si chiede appena si sa il nome, prima di formato, supermercato e prezzo: se il prodotto
+  // c'è già (nato da uno scontrino, senza codice) si unisce e si va alla scheda, che chiede solo quello che manca
+  const [subito, setSubito] = useState(null); const chiesto = useRef('');
+  useEffect(() => {
+    if (passo !== 'dati') return undefined;
+    const n = nome.trim(); if (n.length < 3 || chiesto.current === n) return undefined;
+    const t = setTimeout(async () => {
+      chiesto.current = n;
+      const sm = await api(`/api/prodotti/simili?${new URLSearchParams({ nome: n, ean, catena_id: catena || '' })}`).catch(() => []);
+      setSubito(sm.length ? sm : null);
+    }, letto && nome === (letto.nome || '') ? 0 : 900);
+    return () => clearTimeout(t);
+  }, [nome, passo]); // eslint-disable-line
   const scatta = (q, daGalleria = false) => { chi.current = q; setErr(''); (daGalleria ? galleria : camera).current?.click(); };
   const leggi = async (a, b) => {
     setPasso('lettura'); setErr('');
@@ -797,9 +817,9 @@ function NuovoVeloce({ ean, avviso, onFatto, onAnnulla }) {
       await mettiPrezzo(p.id); onFatto(p, { conPrezzo: !!prezzo.trim() });
     } catch (e) { setErr(e.message); } finally { setAttesa(false); }
   };
-  const eQuesto = async (x) => {
+  const eQuesto = async (x, manca = false) => {
     setErr(''); setAttesa(true);
-    try { const r = await api(`/api/prodotti/${x.id}/integra`, { metodo: 'POST', corpo: await corpo(null) }); await mettiPrezzo(x.id); onFatto(r.prodotto, { conPrezzo: !!prezzo.trim() }); }
+    try { const r = await api(`/api/prodotti/${x.id}/integra`, { metodo: 'POST', corpo: await corpo(null) }); await mettiPrezzo(x.id); onFatto(r.prodotto, manca && !prezzo.trim() ? { manca: true } : { conPrezzo: !!prezzo.trim() }); }
     catch (e) { setErr(e.message); } finally { setAttesa(false); }
   };
   const input = <><input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={presa} /><input ref={galleria} type="file" accept="image/*" hidden onChange={presa} /></>;
@@ -817,6 +837,10 @@ function NuovoVeloce({ ean, avviso, onFatto, onAnnulla }) {
     {prepara && <p className="muto">{prepara}</p>}
     {passo === 'dati' && <div className="colonna" style={{ gap: 14 }}>
       {!letto && err && <div className="errore">{err}</div>}
+      {subito && <div className="avviso colonna gia-ce-subito"><b>{subito.length === 1 ? 'Questo prodotto c\'è già nell\'app, senza codice a barre. È questo?' : 'C\'è già un prodotto così nell\'app, senza codice a barre. È uno di questi?'}</b>
+        {subito.map((x) => <button key={x.id} type="button" className="b pieno" disabled={attesa} onClick={() => eQuesto(x, true)}>{x.foto ? <img src={x.foto} alt="" className="mini-foto" /> : null}<span>Sì, è «{x.nome}»{x.catena ? <small> · {x.catena}{x.prezzo != null ? ` ${euro(x.prezzo)}` : ''}</small> : null}</span></button>)}
+        <span className="muto piccolo">Se è lui, gli attacco il codice a barre e la foto: poi chiedo solo quello che manca.</span>
+        <button type="button" className="link" onClick={() => setSubito(null)}>No, è un prodotto diverso</button></div>}
       {letto && <p className="ok-letta" role="status">Ho letto l'etichetta{letto.ingredienti ? ', ingredienti compresi' : ''}{letto.nutriscore ? ` (Nutri-Score ${letto.nutriscore.toUpperCase()})` : ''}. Controlla nome e formato, poi prezzo e supermercato.</p>}
       <div className="riga" style={{ alignItems: 'flex-start' }}>{davanti && <img src={davanti} alt="" className="miniatura" />}
         <label className="campo" style={{ flex: 1 }}>Nome del prodotto<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Es. Filetti di sgombro Delicius" /></label></div>

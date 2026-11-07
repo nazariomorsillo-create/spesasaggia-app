@@ -273,6 +273,7 @@ function CosaManca({ p, g, etichetta }) {
       {g && <li className="si">✓ Giudizio: {g.parola}</li>}
       {manca.map((m) => <li key={m} className="no">• Manca {m}{m === 'la foto' ? ': tocca «Aggiungi foto» qui sotto' : m === 'il formato' ? ': scrivilo nei prezzi qui sotto' : m === 'il prezzo' ? ': scrivilo qui sopra' : m === 'il giudizio' ? (p.foto ? ': fotografa gli ingredienti qui sotto' : ': fotografa l\'etichetta qui sotto') : ''}</li>)}
     </ul>
+    {p.ultimi.length > 0 && !p.ultimi.some((x) => x.catena_id === mem.leggi('catena', null)) && mem.leggi('catena', null) && <p className="manca-qui">• Manca il prezzo nel supermercato dove sei: tocca «+ Prezzo in un altro supermercato» qui sotto.</p>}
     {p.ultimi.length > 0 && <p className="muto piccolo">Se il prezzo è cambiato, tocca «Correggi il prezzo» accanto al prezzo; se l'hai visto in un altro supermercato, «+ Prezzo in un altro supermercato».</p>}
     {etichetta}
   </section>;

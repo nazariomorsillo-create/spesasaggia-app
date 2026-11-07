@@ -457,7 +457,8 @@ app.get('/api/prodotti/simili', async (req) => {
   }
   // 0.56: anche senza supermercato, tra i prodotti senza codice a barre (di solito nati dagli scontrini): se il nome somiglia
   // è probabile che sia lo stesso (es. «ARACHIDI SALATE» dallo scontrino Lidl e «Arachidi salate tostate» dalla foto dell'etichetta)
-  if (!cid && nome.length >= 3) for (const p of db.prepare("SELECT * FROM prodotti WHERE ean = ''").all()) {
+  // 0.94: si fa sempre, anche con un supermercato scelto (il prodotto può essere nato da uno scontrino di un altro supermercato)
+  if (nome.length >= 3) for (const p of db.prepare("SELECT * FROM prodotti WHERE ean = ''").all()) {
     if (trovati.has(p.id)) continue;
     if (quantita && p.quantita > 0 && Math.abs(p.quantita - quantita) / Math.max(p.quantita, quantita) > 0.05) continue;
     const s = Math.max(somiglianza(nome, p.nome), p.nome_scontrino ? somiglianza(nome, p.nome_scontrino) : 0); if (s >= 0.6) trovati.set(p.id, s - 0.05);
@@ -465,7 +466,8 @@ app.get('/api/prodotti/simili', async (req) => {
   const ultimo = db.prepare('SELECT prezzo, rilevato_il FROM prezzi WHERE prodotto_id = ? AND catena_id = ? AND superato_il IS NULL ORDER BY rilevato_il DESC, id DESC LIMIT 1');
   const ultimoOvunque = db.prepare('SELECT pr.prezzo, pr.rilevato_il, c.nome catena FROM prezzi pr JOIN catene c ON c.id = pr.catena_id WHERE pr.prodotto_id = ? AND pr.superato_il IS NULL ORDER BY pr.rilevato_il DESC, pr.id DESC LIMIT 1');
   return [...trovati.entries()].sort((x, y) => y[1] - x[1]).slice(0, 3).map(([pid, s]) => {
-    const p = prodottoCompleto(pid); const u = cid ? ultimo.get(pid, cid) : ultimoOvunque.get(pid);
+    const p = prodottoCompleto(pid); const uq = cid ? ultimo.get(pid, cid) : null;
+    const u = uq ? { ...uq, catena: db.prepare('SELECT nome FROM catene WHERE id = ?').get(cid)?.nome } : ultimoOvunque.get(pid);
     return { id: p.id, nome: p.nome, voce: p.voce, foto: p.foto, quantita: p.quantita, unita: p.unita, pezzo: p.pezzo, pezzi: p.pezzi, sfuso: !!p.sfuso, marca: p.marca, catena: p.catena || u?.catena || null,
       prezzo: u?.prezzo ?? null, rilevato_il: u?.rilevato_il ?? null, stesso_codice: s === 1 && !!ean && p.ean === ean, descrizione: p.descrizione };
   });
