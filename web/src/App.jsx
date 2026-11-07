@@ -112,10 +112,7 @@ export default function App() {
   const benvenuto = inBenvenuto && ['lista', ''].includes(base);
   const sezione = ['giro'].includes(base) ? 'giro' : base === 'offerte' ? 'offerte' : ['altro', 'rileva', 'nuovo-prodotto', 'prezzi', 'prodotto', 'famiglia', 'supermercati', 'produttori', 'produttore', 'ordini', 'spese', 'volantino', 'installa', 'preferiti'].includes(base) ? 'altro' : 'lista';
   return (<>
-    <header className="testata">
-      <a href="#lista" className="marchio"><img className="logo" src="/icona.svg?v=3" alt="" width="36" height="36" />Spesa Saggia</a>
-      {s && <span className="dove">{s.impostazioni.citta}</span>}
-    </header>
+    {/* 0.84 (Nazario, 07/11): niente striscia in alto con logo e nome: più spazio per la lista */}
     <main id="contenuto">
       {avviso && <div className="ok" role="status">{avviso}</div>}
       {stato.errore && <div className="errore">{stato.errore}</div>}

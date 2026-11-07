@@ -59,6 +59,25 @@ function Rileva({ stato }) {
 }
 const campoManoSemplice = (codice, setCodice, manda, annulla) => <form className="codice-mano" onSubmit={manda}><label className="campo">Scrivi le cifre sotto il codice a barre<input inputMode="numeric" value={codice} onChange={(e) => setCodice(e.target.value)} autoFocus /></label><div className="riga"><button className="b pieno">Cerca il prodotto</button><button type="button" className="link" onClick={annulla}>Annulla</button></div></form>;
 const VIDEO = { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } };
+// 0.85 (Nazario, 07/11): l'iPhone chiedeva il permesso della fotocamera a ogni scansione. Ora la fotocamera si apre una volta
+// e tra una scansione e l'altra resta pronta (con l'immagine spenta) per qualche minuto: niente nuova richiesta.
+// Si chiude del tutto dopo 3 minuti senza scansioni o quando esci dall'app.
+const cam = { stream: null, timer: null };
+const camViva = () => cam.stream?.getVideoTracks().some((t) => t.readyState === 'live');
+function chiudiCamera() { clearTimeout(cam.timer); cam.stream?.getTracks().forEach((t) => t.stop()); cam.stream = null; }
+async function prendiCamera() {
+  clearTimeout(cam.timer);
+  if (camViva()) { cam.stream.getVideoTracks().forEach((t) => { t.enabled = true; }); return cam.stream; }
+  cam.stream = await navigator.mediaDevices.getUserMedia({ video: VIDEO });
+  try { await cam.stream.getVideoTracks()[0].applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch { /* non tutti i telefoni */ }
+  return cam.stream;
+}
+function lasciaCamera() {
+  if (!cam.stream) return;
+  cam.stream.getVideoTracks().forEach((t) => { t.enabled = false; });
+  clearTimeout(cam.timer); cam.timer = setTimeout(chiudiCamera, 3 * 60 * 1000);
+}
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (document.hidden) chiudiCamera(); });
 function Scanner({ onCodice, etichetta = '📷 Inquadra il codice a barre', classe = 'b' }) {
   const [attivo, setAttivo] = useState(false); const [err, setErr] = useState(''); const v = useRef(null);
   const [aMano, setAMano] = useState(false); const [codice, setCodice] = useState('');
@@ -66,14 +85,14 @@ function Scanner({ onCodice, etichetta = '📷 Inquadra il codice a barre', clas
   const disponibile = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
   useEffect(() => {
     if (!attivo) return undefined;
-    let stream; let fermo = false; let ferma = null;
+    let fermo = false; let ferma = null;
     const trovato = (codice) => { if (fermo) return; fermo = true; setAttivo(false); onCodice(codice); };
     (async () => {
       try {
+        const stream = await prendiCamera();
+        if (fermo || !v.current) return;
+        v.current.srcObject = stream; await v.current.play();
         if ('BarcodeDetector' in window) {
-          stream = await navigator.mediaDevices.getUserMedia({ video: VIDEO });
-          try { await stream.getVideoTracks()[0].applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch { /* non tutti i telefoni */ }
-          v.current.srcObject = stream; await v.current.play();
           const det = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
           while (!fermo) {
             const c = await det.detect(v.current).catch(() => []);
@@ -86,13 +105,14 @@ function Scanner({ onCodice, etichetta = '📷 Inquadra il codice a barre', clas
           const { DecodeHintType, BarcodeFormat } = await import('@zxing/library');
           const suggerimenti = new Map([[DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E]], [DecodeHintType.TRY_HARDER, true]]);
           const lettore = new BrowserMultiFormatReader(suggerimenti, { delayBetweenScanAttempts: 80 });
-          const ctrl = await lettore.decodeFromConstraints({ video: VIDEO }, v.current, (r) => { if (r) trovato(r.getText()); });
+          // si legge dal video già acceso (decodeFromConstraints aprirebbe e chiuderebbe la fotocamera ogni volta)
+          const ctrl = lettore.scan(v.current, (r) => { if (r) trovato(r.getText()); });
           ferma = () => ctrl.stop();
           if (fermo) ferma();
         }
       } catch { setErr('Fotocamera non disponibile (serve https o il permesso): scrivi il codice a mano.'); setAttivo(false); }
     })();
-    return () => { fermo = true; ferma?.(); stream?.getTracks().forEach((x) => x.stop()); };
+    return () => { fermo = true; ferma?.(); if (v.current) v.current.srcObject = null; lasciaCamera(); };
   }, [attivo]); // eslint-disable-line
   if (!disponibile) return <div style={{ gridColumn: '1 / -1' }}>{aMano ? campoManoSemplice(codice, setCodice, manda, () => setAMano(false)) : <button type="button" className={classe} onClick={() => setAMano(true)}>Scrivi il codice a barre</button>}</div>;
   const campoMano = <form className="codice-mano" onSubmit={manda}>

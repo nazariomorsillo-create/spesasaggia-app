@@ -5177,3 +5177,22 @@ form.cerca { position: sticky; top: 0; z-index: 7; background: var(--banco); pad
   border: 0;
   padding: 0;
 }
+/* 0.84: senza la striscia in alto, la pagina parte sotto l'ora e la batteria dell'iPhone */
+#app > main {
+  padding-top: calc(12px + env(safe-area-inset-top));
+}
+.giro-schede,
+form.cerca {
+  top: env(safe-area-inset-top);
+}
+/* 0.85: sopra le parti fisse, la fascia dell'ora resta coperta (niente lista che scorre sotto l'orologio) */
+body::before {
+  content: "";
+  z-index: 9;
+  background: var(--banco);
+  height: env(safe-area-inset-top);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+}
