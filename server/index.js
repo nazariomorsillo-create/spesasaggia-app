@@ -1570,7 +1570,8 @@ function doveLibera(req, r, v) {
   const cid = v === null || v === '' ? null : Number(v) === 0 ? 0 : id(v);
   if (cid && !db.prepare('SELECT 1 FROM catene WHERE id = ?').get(cid)) throw new Errore('Supermercato non trovato', 404);
   db.prepare('UPDATE righe_lista SET catena_libera = ? WHERE id = ?').run(cid, r.id);
-  if (cid != null) db.prepare(`INSERT INTO abitudini (famiglia_id, voce_id, catena_libera) VALUES (?, ?, ?)
+  // il supermercato si ricorda per la volta dopo solo per le cose generiche (un prodotto spostato perché mancava vale solo stavolta)
+  if (cid != null && r.libera) db.prepare(`INSERT INTO abitudini (famiglia_id, voce_id, catena_libera) VALUES (?, ?, ?)
     ON CONFLICT(famiglia_id, voce_id) DO UPDATE SET catena_libera = excluded.catena_libera`).run(req.famiglia.id, r.voce_id, cid);
 }
 app.post('/api/lista/:id/dove', async (req) => { const r = rigaDi(req, req.params.id); doveLibera(req, r, req.body?.catena_libera); return { ok: true }; });
@@ -1594,6 +1595,7 @@ app.post('/api/lista/:id/scegli', async (req) => {
     const p = pid && db.prepare('SELECT * FROM prodotti WHERE id = ?').get(pid); if (!p) throw new Errore('Scegli un prodotto');
     const n = Math.max(1, Math.min(50, Math.round(Number(b.confezioni) || 0) || (p.quantita > 0 ? Math.max(1, Math.ceil(r.quantita / p.quantita - 1e-6)) : 1)));
     const quantita = p.sfuso ? r.quantita : p.quantita > 0 ? Math.round(n * p.quantita * 1000) / 1000 : n;
+    db.prepare('UPDATE righe_lista SET catena_libera = NULL WHERE id = ? AND prodotto_id IS NOT ?').run(r.id, p.id); // scelto un altro prodotto: niente più spostamento
     db.prepare('UPDATE righe_lista SET prodotto_id = ?, scelto = 1, libera = 0, voce_id = ?, quantita = ?, catena_id = CASE WHEN prodotto_id = ? THEN catena_id ELSE NULL END, offerta_nascosta = CASE WHEN prodotto_id = ? THEN offerta_nascosta ELSE 0 END, migliore_nascosto = CASE WHEN prodotto_id = ? THEN migliore_nascosto ELSE 0 END WHERE id = ?').run(p.id, p.voce_id, quantita, p.id, p.id, p.id, r.id);
     // preso dal suggerimento «migliore»: si ricorda il prodotto di prima (per tornare indietro)
     const tornaIndietro = r.prodotto_prima && r.prodotto_prima === p.id && r.quantita_prima;

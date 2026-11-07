@@ -169,13 +169,15 @@ function gruppiLiberi(db, righeLibere, negozi, casa, data, s) {
 
 // 0.61: una riga «libera» (generica, il prodotto si sceglie al supermercato) non entra nel conto del giro: si prende dove si va
 export const libera = (r) => !!r.libera && !r.prodotto_id && !r.catena_id;
+// 0.82: un prodotto preciso che nel giro hai spostato in un altro supermercato («non c'era, lo compro altrove»): va lì, fuori dal conto
+export const spostata = (r) => !libera(r) && r.catena_libera != null;
 export async function calcola(db, { data = oggi(), famiglia_id = null, s = impostazioni(db), salvaCasa = null, catene_ids = null, anchePresi = false } = {}) {
   const tutteRighe = righeLista(db, famiglia_id, anchePresi);
   const avvisi = [];
   if (!tutteRighe.length) return { data, righe: tutteRighe, soluzioni: [], singoli: [], liberi: [], avvisi: ['La lista è vuota.'] };
-  const liberi = tutteRighe.filter(libera).map(rigaCorta); const righe = tutteRighe.filter((r) => !libera(r));
+  const liberi = tutteRighe.filter(libera).map(rigaCorta); const righe = tutteRighe.filter((r) => !libera(r) && !spostata(r));
   const { casa, negozi } = await conCoordinate(db, s, salvaCasa);
-  const gl = gruppiLiberi(db, tutteRighe.filter(libera), negozi, casa, data, s);
+  const gl = gruppiLiberi(db, tutteRighe.filter((r) => libera(r) || spostata(r)), negozi, casa, data, s);
   if (!righe.length) return { data, righe: tutteRighe.map(rigaCorta), soluzioni: [], singoli: [], liberi, ...gl, avvisi };
   if (!casa.lat) avvisi.push('Manca l\'indirizzo di casa (Altro → La mia famiglia): il giro e i chilometri non si possono calcolare.');
   const { tabella, catene } = miglioriPerCatena(db, righe, data, s, catene_ids);
@@ -237,7 +239,7 @@ export async function calcola(db, { data = oggi(), famiglia_id = null, s = impos
   return { data, impostazioni: { euro_km: s.euro_km, soglia_negozio: s.soglia_negozio, sosta: s.sosta }, righe: tutteRighe.map(rigaCorta), liberi, ...gl, soluzioni, piuEconomica: piuEconomica ? { ...piuEconomica, punteggio: undefined } : null, singoli: singoli.map((x) => ({ catena: x.catene[0], spesa: x.spesa, totale: x.totale, mancanti: x.mancanti.length, km: x.km })), avvisi };
 }
 
-const rigaCorta = (r) => ({ id: r.id, voce: r.voce, catena_libera: r.catena_libera ?? null, quantita: r.quantita, unita: r.unita, qualita: r.qualita, marca: r.marca, prodotto_scelto: r.prodotto_scelto || null });
+const rigaCorta = (r) => ({ id: r.id, voce: r.voce, catena_libera: r.catena_libera ?? null, libera: !!r.libera, quantita: r.quantita, unita: r.unita, qualita: r.qualita, marca: r.marca, prodotto_scelto: r.prodotto_scelto || null });
 const acquisto = (x) => ({
   riga: rigaCorta(x.riga), prodotto: x.prodotto.nome, prodotto_id: x.prodotto.id, foto: x.prodotto.foto || '', tipo: x.prodotto.tipo, marca: x.prodotto.marca, origine: x.prodotto.origine, bio: !!x.prodotto.bio, qualita: x.prodotto.qualita ?? null,
   confezioni: x.confezioni, formatoMancante: !!x.formatoMancante, costo: x.costo, prezzo: x.prezzo.prezzo, unitario: x.prezzo.unitario, offerta: !!x.prezzo.offerta,

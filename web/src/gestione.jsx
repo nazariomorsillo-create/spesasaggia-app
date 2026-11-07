@@ -245,7 +245,7 @@ function FormProdotto({ iniziale = {}, voci, catene, onSalvato, onAnnulla, senza
       const f = u === 'kg' ? (q < 1 ? { n: conVirgola(Math.round(q * 1000)), u: 'g' } : { n: conVirgola(q), u: 'kg' }) : u === 'l' ? (q < 1 ? { n: conVirgola(Math.round(q * 1000)), u: 'ml' } : { n: conVirgola(q), u: 'l' }) : { n: conVirgola(q), u: 'pz' };
       setFu({ ...fu, ...f, pezzi: r.pezzi > 1 && u !== 'pz' ? String(r.pezzi) : '', modo: 'tutti' }); setFormato('confezione');
     }
-    setDett((d) => ({ ...d, imballaggio: d.imballaggio || r.imballaggio || '', valori: d.valori || r.valori || '', ingredienti: d.ingredienti || r.ingredienti,
+    setDett((d) => ({ ...d, foto: d.foto || r.foto || '', imballaggio: d.imballaggio || r.imballaggio || '', valori: d.valori || r.valori || '', ingredienti: d.ingredienti || r.ingredienti,
       additivi: d.additivi || (Array.isArray(r.additivi) ? (r.additivi.length ? r.additivi.join(', ') : 'nessuno') : ''), nutriscore: d.nutriscore || r.nutriscore, produttore: d.produttore || r.produttore, descrizione: d.descrizione || r.descrizione, foto: d.foto || r.foto }));
     setAltro(true); setCercaSimili((n) => n + 1);
     setLetto([r.nome && `«${r.nome}»`, r.quantita > 0 && 'formato', r.ingredienti && 'ingredienti', Array.isArray(r.additivi) && (r.additivi.length ? `additivi ${r.additivi.join(', ')}` : 'nessun additivo'),
@@ -706,4 +706,110 @@ function NuovoDaCodice({ s, voci, onFatto, onAnnulla }) {
   </section>;
 }
 
-export { CercaVoce, Rileva, Scanner, Prezzi, Negozi, Scontrini, Impostazioni, Pubblicita, NuovoDaCodice, NuovoProdotto, FormProdotto, LeggiEtichetta };
+// 0.82 (Nazario, 07/11): prodotto nuovo dal codice a barre in poche mosse. Foto del davanti (è anche la foto della scheda),
+// foto degli ingredienti (si può saltare), l'app legge l'etichetta e compila tutto; tu controlli nome e formato,
+// tocchi il supermercato, scrivi il prezzo e salvi. La voce («che cos'è») la sceglie l'app dal nome: la cambi solo se vuoi.
+const formatoDaLettura = (x) => {
+  const q = x.quantita; const u = x.unita; if (!(q > 0)) return FORMATO_VUOTO('g');
+  const f = u === 'kg' ? (q < 1 ? { n: conVirgola(Math.round(q * 1000)), u: 'g' } : { n: conVirgola(q), u: 'kg' }) : u === 'l' ? (q < 1 ? { n: conVirgola(Math.round(q * 1000)), u: 'ml' } : { n: conVirgola(q), u: 'l' }) : { n: conVirgola(q), u: 'pz' };
+  return { ...FORMATO_VUOTO('g'), ...f, pezzi: x.pezzi > 1 && u !== 'pz' ? String(x.pezzi) : '', modo: x.pezzi > 1 ? 'tutti' : 'uno' };
+};
+function NuovoVeloce({ ean, avviso, onFatto, onAnnulla }) {
+  const [passo, setPasso] = useState('davanti'); const [davanti, setDavanti] = useState(''); const [letto, setLetto] = useState(null);
+  const [nome, setNome] = useState(''); const [fu, setFu] = useState(FORMATO_VUOTO('g'));
+  const [catena, setCatena] = useState(mem.leggi('catena', null)); const [prezzo, setPrezzo] = useState(''); const [offerta, setOfferta] = useState(false);
+  const [voce, setVoce] = useState(null); const [cambiaVoce, setCambiaVoce] = useState(false); const voci = useDati(cambiaVoce ? '/api/voci' : null);
+  const [simili, setSimili] = useState(null); const [err, setErr] = useState(''); const [attesa, setAttesa] = useState(false); const [prepara, setPrepara] = useState('');
+  const camera = useRef(null); const galleria = useRef(null); const chi = useRef('davanti');
+  const scatta = (q, daGalleria = false) => { chi.current = q; setErr(''); (daGalleria ? galleria : camera).current?.click(); };
+  const leggi = async (a, b) => {
+    setPasso('lettura'); setErr('');
+    try { const x = await api('/api/etichetta', { metodo: 'POST', corpo: { foto: [a, b].filter(Boolean) } }); setLetto(x); setNome(x.nome || ''); setFu(formatoDaLettura(x)); }
+    catch (e) { setErr(`${e.message}. Scrivi tu nome e formato qui sotto.`); }
+    setPasso('dati');
+  };
+  const presa = async (e) => {
+    const f = e.target.files?.[0]; e.target.value = ''; if (!f) return;
+    setPrepara('Preparo la foto…');
+    try { const foto = await riduciFoto(f, 1400, 0.85); setPrepara(''); if (chi.current === 'davanti') { setDavanti(foto); setPasso('ingredienti'); } else leggi(davanti, foto); }
+    catch (x) { setPrepara(''); setErr(x.message || 'Questa foto non si apre: riprova'); }
+  };
+  // la voce la propone l'app dal nome, in silenzio
+  useEffect(() => {
+    if (cambiaVoce || nome.trim().length < 3) return undefined;
+    const t = setTimeout(() => api(`/api/voci/proposta?nome=${encodeURIComponent(nome.trim())}`).then((r) => setVoce(r.voci[0] ? { id: r.voci[0].id, nome: r.voci[0].nome } : r.nuova ? { nuova: r.nuova, nome: r.nuova.nome } : null)).catch(() => {}), 350);
+    return () => clearTimeout(t);
+  }, [nome, cambiaVoce]);
+  const corpo = async (voceId) => {
+    let foto = letto?.foto || '';
+    if (!foto && davanti) foto = (await api('/api/foto', { metodo: 'POST', corpo: { dati: davanti } }).catch(() => ({ foto: '' }))).foto;
+    const df = fu.n.trim() ? datiFormato(fu) : { quantita: null, formato_unita: undefined, pezzi: null };
+    const l = letto || {};
+    return { nome: nome.trim(), ean, ...(voceId ? { voce_id: voceId } : {}), foto, tipo: l.marca ? 'marca' : 'senza', marca: l.marca || '', origine: l.origine || '', bio: !!l.bio,
+      quantita: df.quantita, formato_unita: df.formato_unita, pezzi: df.pezzi, ingredienti: l.ingredienti || '', valori: l.valori || '', nutriscore: l.nutriscore || '',
+      additivi: Array.isArray(l.additivi) ? (l.additivi.length ? l.additivi.join(', ') : 'nessuno') : '', imballaggio: l.imballaggio || '', produttore: l.produttore || '', descrizione: l.descrizione || '' };
+  };
+  const controlla = () => {
+    if (nome.trim().length < 2) throw new Error('Scrivi il nome del prodotto');
+    if (prezzo.trim() && !(Number(prezzo.replace(',', '.')) > 0)) throw new Error('Il prezzo non è valido: scrivi per esempio 3,99');
+    if (prezzo.trim() && !catena) throw new Error('Tocca il supermercato dove l\'hai comprato');
+  };
+  const mettiPrezzo = async (pid) => { if (!prezzo.trim()) return; mem.scrivi('catena', catena); await api('/api/prezzi', { metodo: 'POST', corpo: { prodotto_id: pid, catena_id: catena, prezzo, offerta, fonte: 'scaffale' } }); };
+  const salva = async (anche = false) => {
+    setErr(''); setAttesa(true);
+    try {
+      controlla();
+      // c'è già lo stesso prodotto senza codice (da uno scontrino o un volantino)? Si chiede prima di farne un doppione
+      if (!anche) { const sm = await api(`/api/prodotti/simili?${new URLSearchParams({ nome: nome.trim(), ean, catena_id: catena || '' })}`).catch(() => []); if (sm.length) { setSimili(sm); return; } }
+      let voceId = voce?.id;
+      if (!voceId) voceId = (await api('/api/voci', { metodo: 'POST', corpo: voce?.nuova || { nome: nome.trim().split(/\s+/).slice(0, 3).join(' '), reparto: 'dispensa', unita: 'pz' } })).id;
+      const p = await api('/api/prodotti', { metodo: 'POST', corpo: await corpo(voceId) });
+      await mettiPrezzo(p.id); onFatto(p, { conPrezzo: !!prezzo.trim() });
+    } catch (e) { setErr(e.message); } finally { setAttesa(false); }
+  };
+  const eQuesto = async (x) => {
+    setErr(''); setAttesa(true);
+    try { const r = await api(`/api/prodotti/${x.id}/integra`, { metodo: 'POST', corpo: await corpo(null) }); await mettiPrezzo(x.id); onFatto(r.prodotto, { conPrezzo: !!prezzo.trim() }); }
+    catch (e) { setErr(e.message); } finally { setAttesa(false); }
+  };
+  const input = <><input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={presa} /><input ref={galleria} type="file" accept="image/*" hidden onChange={presa} /></>;
+  return <section className="carta nuovo-veloce">
+    {input}
+    <h2>Prodotto nuovo</h2>
+    {passo === 'davanti' && <><p className="muto">{avviso || `Il codice ${ean} non lo conosce ancora nessuno.`} Bastano due foto: compilo io la scheda.</p>
+      <div className="passo-etichetta"><DisegnoDavanti /><div className="colonna"><p className="frase-etichetta">1. Fotografa il <b>DAVANTI</b></p><p className="muto">nome, marca e peso: sarà anche la foto della scheda</p></div></div>
+      <button type="button" className="b pieno grande" onClick={() => scatta('davanti')}><Icona n="foto" /> Fotografa il davanti</button>
+      <button type="button" className="link" onClick={() => scatta('davanti', true)}>Prendila dalle foto</button></>}
+    {passo === 'ingredienti' && <><div className="passo-etichetta"><img src={davanti} alt="Il davanti" className="miniatura" /><div className="colonna"><p className="frase-etichetta">2. Ora gli <b>INGREDIENTI</b></p><p className="muto">e i valori nutrizionali, da vicino: così arriva anche il voto</p></div></div>
+      <button type="button" className="b pieno grande" onClick={() => scatta('retro')}><Icona n="foto" /> Fotografa gli ingredienti</button>
+      <button type="button" className="b" onClick={() => leggi(davanti, '')}>Non ci sono: leggi solo il davanti</button></>}
+    {passo === 'lettura' && <p className="ok" role="status">Leggo l'etichetta… un attimo.</p>}
+    {prepara && <p className="muto">{prepara}</p>}
+    {passo === 'dati' && <div className="colonna" style={{ gap: 14 }}>
+      {!letto && err && <div className="errore">{err}</div>}
+      {letto && <p className="ok-letta" role="status">Ho letto l'etichetta{letto.ingredienti ? ', ingredienti compresi' : ''}{letto.nutriscore ? ` (Nutri-Score ${letto.nutriscore.toUpperCase()})` : ''}. Controlla nome e formato, poi prezzo e supermercato.</p>}
+      <div className="riga" style={{ alignItems: 'flex-start' }}>{davanti && <img src={davanti} alt="" className="miniatura" />}
+        <label className="campo" style={{ flex: 1 }}>Nome del prodotto<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Es. Filetti di sgombro Delicius" /></label></div>
+      <div className="colonna"><span className="nome-gruppo">Formato</span>
+        <div className="formato-semplice"><input inputMode="decimal" value={fu.n} onChange={(e) => setFu({ ...fu, n: e.target.value })} placeholder="500" aria-label="Quanto contiene" />
+          <div className="scelte">{[['g', 'g'], ['kg', 'kg'], ['ml', 'ml'], ['l', 'litri'], ['pz', 'pezzi']].map(([u, t]) => <button key={u} type="button" aria-pressed={fu.u === u} onClick={() => setFu({ ...fu, u })}>{t}</button>)}</div></div>
+        {Number(fu.pezzi) > 1 && <span className="muto piccolo">Confezione da {fu.pezzi} pezzi, {fu.n} {fu.u} in tutto</span>}</div>
+      {voce && !cambiaVoce && <p className="muto piccolo">Lo metto in: <b>{voce.nome}</b> · <button type="button" className="link" onClick={() => setCambiaVoce(true)}>cambia</button></p>}
+      {cambiaVoce && <CercaVoce etichetta="Che cos'è?" voci={voci.dati} ricaricaVoci={voci.ricarica} onScelta={(x) => { setVoce({ id: x.id, nome: x.nome }); setCambiaVoce(false); }} />}
+      <span className="nome-gruppo">Dove l'hai preso</span>
+      <ScegliCatena valore={catena} onScelta={setCatena} />
+      <label className="campo">Prezzo della confezione<span className="euro-campo"><input className="grosso" inputMode="decimal" value={prezzo} onChange={(e) => setPrezzo(e.target.value)} placeholder="0,00" /><b>€</b></span></label>
+      <div className="scelte"><button type="button" aria-pressed={offerta} onClick={() => setOfferta(!offerta)}>{offerta ? '✓ ' : ''}Era in offerta</button></div>
+      {simili && <div className="avviso colonna"><b>C'è già un prodotto così, senza codice a barre. È questo?</b>
+        {simili.map((x) => <button key={x.id} type="button" className="b" disabled={attesa} onClick={() => eQuesto(x)}>Sì, è «{x.nome}»</button>)}
+        <button type="button" className="link" onClick={() => { setSimili(null); salva(true); }}>No, è un prodotto diverso</button></div>}
+      {err && letto && <div className="errore">{err}</div>}
+      {!simili && <button type="button" className="b pieno grande" disabled={attesa} onClick={() => salva(false)}>{attesa ? 'Salvo…' : 'Salva'}</button>}
+    </div>}
+    {passo !== 'dati' && err && <div className="errore">{err}</div>}
+    {passo !== 'dati' && <button type="button" className="link" onClick={() => { setErr(''); setPasso('dati'); }}>Scrivo io i dati, senza foto</button>}
+    <button type="button" className="link" onClick={onAnnulla}>Annulla</button>
+  </section>;
+}
+
+export { CercaVoce, Rileva, Scanner, Prezzi, Negozi, Scontrini, Impostazioni, Pubblicita, NuovoDaCodice, NuovoVeloce, NuovoProdotto, FormProdotto, LeggiEtichetta };

@@ -5148,3 +5148,7 @@ a.b.pieno-verde {
 .gia-tasti .conta { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 7px; border-radius: 999px; background: var(--marca-azione); color: #fff; font-size: 15px; }
 .gia-nei-super .link { align-self: flex-start; }
 form.cerca { position: sticky; top: 0; z-index: 7; background: var(--banco); padding-block: 6px; scroll-margin-top: 0; }
+.acquisti.da-spuntare li > .libera-azioni.non-cera-tasto { grid-column: 2; grid-row: 4; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.formato-semplice { display: flex; flex-direction: column; gap: 8px; }
+.formato-semplice input { font: inherit; font-size: 24px; font-weight: 700; padding: 10px 14px; border: 2px solid var(--linea); border-radius: 12px; width: 9ch; }
+.nuovo-veloce { display: flex; flex-direction: column; gap: 12px; }
