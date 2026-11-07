@@ -1340,7 +1340,9 @@ const ricorda = (fid, voce_id, qualita, marca) => db.prepare(`INSERT INTO abitud
   ON CONFLICT(famiglia_id, voce_id) DO UPDATE SET qualita = excluded.qualita, marca = excluded.marca`).run(fid, voce_id, qualita, marca);
 // se non è stato detto niente, valgono le abitudini
 const conAbitudine = (fid, d, b) => { if (!d.voce_id) return d; const a = abitudine(fid, d.voce_id); return { ...d, qualita: b.qualita && b.qualita !== 'qualsiasi' ? d.qualita : a.qualita, marca: b.marca && b.marca !== 'qualsiasi' ? d.marca : a.marca }; };
-app.get('/api/lista', async (req) => lista(req));
+// 0.84: le cose prese nei giorni passati vanno nello storico (Le mie spese), una spesa per supermercato e giorno
+let archiviaSpese = null;
+app.get('/api/lista', async (req) => { if (archiviaSpese) await archiviaSpese(req, { soloVecchie: true }).catch((e) => console.error('archivio spese:', e.message)); return lista(req); });
 app.post('/api/lista', async (req) => {
   const d = conAbitudine(req.famiglia.id, datiRiga(req.body || {}), req.body || {});
   if (!d.voce_id) throw new Errore('Scegli cosa comprare');
@@ -1351,7 +1353,11 @@ app.post('/api/lista', async (req) => {
 app.put('/api/lista/:id', async (req) => {
   const r = rigaDi(req, req.params.id);
   // spunta «preso»: risposta immediata, senza ricalcolare tutta la lista
-  if (req.query.breve && Object.keys(req.body || {}).every((k) => k === 'preso')) { db.prepare('UPDATE righe_lista SET preso = ? WHERE id = ?').run(req.body.preso ? 1 : 0, r.id); return { ok: true }; }
+  if (req.query.breve && Object.keys(req.body || {}).every((k) => k === 'preso' || k === 'preso_da')) {
+    // 0.84: spuntata nel giro → si sa dove e quando l'hai presa (per lo storico, una spesa per supermercato e giorno)
+    const da = req.body.preso && req.body.preso_da ? id(req.body.preso_da) : null;
+    db.prepare('UPDATE righe_lista SET preso = ?, preso_da = ?, preso_il = ? WHERE id = ?').run(req.body.preso ? 1 : 0, da, req.body.preso ? oggi() : null, r.id); return { ok: true };
+  }
   const b = req.body || {};
   const d = datiRiga(b, r);
   db.prepare('UPDATE righe_lista SET voce_id = @voce_id, prodotto_id = @prodotto_id, quantita = @quantita, qualita = @qualita, marca = @marca, preso = @preso, scelto = @scelto WHERE id = @id').run({ ...d, id: r.id });
@@ -1654,7 +1660,7 @@ app.get('/api/calcolo', async (req) => {
 // ---------- produttori locali ----------
 produttori(app, db, { Errore, id, testo, numero, imp, mieCasa: (req) => imp(req).casa, canoneDi: (p) => tariffeMod.canoneProduttore(db, p) });
 // ---------- le spese fatte: storico, pagella e alternative per la prossima volta ----------
-spese(app, db, { Errore, id, imp, mieCatene, voto, oggi });
+archiviaSpese = spese(app, db, { Errore, id, imp, mieCatene, voto, oggi });
 // ---------- statistiche d'uso (chi gestisce) ----------
 statistiche(app, db, { oggi });
 // produttori segnalati da chi usa l'app

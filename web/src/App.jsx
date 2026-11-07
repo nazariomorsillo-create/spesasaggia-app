@@ -176,8 +176,10 @@ function Lista({ stato, versione, onParla }) {
   useEffect(() => { if (!avvisoLista) return undefined; const t = setTimeout(() => setAvvisoLista(''), 3500); return () => clearTimeout(t); }, [avvisoLista]);
   useEffect(() => { const f = () => lista.ricarica(); addEventListener('lista-cambiata', f); return () => removeEventListener('lista-cambiata', f); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // spunta: il segno compare subito, il server si aggiorna dopo (se non riesce, si torna indietro)
+  const [appenaPreso, setAppenaPreso] = useState(null);
+  useEffect(() => { if (!appenaPreso) return undefined; const t = setTimeout(() => setAppenaPreso(null), 7000); return () => clearTimeout(t); }, [appenaPreso]);
   const spunta = async (r) => {
-    const nuovo = r.preso ? 0 : 1;
+    const nuovo = r.preso ? 0 : 1; setAppenaPreso(nuovo ? r : null);
     lista.setDati((l) => l.map((x) => (x.id === r.id ? { ...x, preso: nuovo } : x)));
     try { await api(`/api/lista/${r.id}?breve=1`, { metodo: 'PUT', corpo: { preso: !!nuovo } }); } catch (e) { setErr(e.message); lista.ricarica(); }
   };
@@ -193,7 +195,7 @@ function Lista({ stato, versione, onParla }) {
     fai(api('/api/lista', { metodo: 'POST', corpo: { voce_id: r.voce_id, prodotto_id: r.prodotto_id, quantita: r.quantita, qualita: r.qualita, marca: r.marca, scelto: !!r.scelto } }));
   };
   // chiude la spesa: le cose prese vanno nello storico (con la pagella) e spariscono dalla lista
-  const chiudi = async () => { setErr(''); try { const sp = await api('/api/spese', { metodo: 'POST', corpo: {} }); location.hash = `#spese/${sp.id}`; } catch (e) { setErr(e.message); } };
+  const chiudi = async () => { setErr(''); try { const sp = await api('/api/spese', { metodo: 'POST', corpo: {} }); location.hash = sp.ids?.length === 1 ? `#spese/${sp.ids[0]}` : '#spese'; } catch (e) { setErr(e.message); } };
   const tutte = lista.dati || [];
   const da = tutte.filter((r) => !r.preso); const presi = tutte.filter((r) => r.preso);
   const daScegliere = da.filter((r) => !r.scelto);
@@ -231,6 +233,7 @@ function Lista({ stato, versione, onParla }) {
     </>} />
     {!inModulo && <>
     {avvisoLista && <div className="ok" role="status">{avvisoLista}</div>}
+    {appenaPreso && <div className="tolto" role="status"><span>Comprato: <b>{appenaPreso.voce}</b></span><button type="button" className="b piccolo" onClick={() => { const r = appenaPreso; setAppenaPreso(null); spunta({ ...r, preso: 1 }); }}>Annulla</button></div>}
     {tolto && <div className="tolto" role="status"><span>Tolto dalla lista: <b>{tolto.prodotto_id && tolto.scelto ? tolto.prodotto_scelto : tolto.voce}</b></span><button type="button" className="b piccolo" onClick={rimetti}>Annulla</button></div>}
     {err && <div className="errore">{err}</div>}
     {lista.dati && !tutte.length && <InstallaApp />}
@@ -240,12 +243,11 @@ function Lista({ stato, versione, onParla }) {
       <button type="button" className="link" onClick={() => setTutta(!tutta)}>{tutta ? 'Mostra solo quelle da sistemare' : 'Mostra qui tutta la lista'}</button>
     </section>}
     {da.length > 0 && !qui.length && !tutta && <p className="muto">Ogni cosa ha già il suo supermercato: le trovi nelle pagine del giro.</p>}
-    {(qui.length > 0 || presi.length > 0) && <ul className="foglio" aria-label="La lista della spesa">
+    {qui.length > 0 && <ul className="foglio" aria-label="La lista della spesa">
       {qui.map((r) => <RigaLista key={r.id} r={r} fai={fai} spunta={spunta} togli={togli} />)}
-      {presi.map((r) => <RigaLista key={r.id} r={r} fai={fai} spunta={spunta} togli={togli} />)}
     </ul>}
-    {presi.length > 0 && !da.length && <button type="button" className="b pieno grande" onClick={chiudi}><Icona n="spunta" /> Com'è andata la spesa?</button>}
-    {presi.length > 0 && da.length > 0 && <button type="button" className="b" onClick={chiudi}>Metti nello storico le cose prese ({presi.length})</button>}
+    {/* 0.84 (Nazario, 07/11): le cose comprate non restano qui: vanno in «Le mie spese», una spesa per supermercato e giorno */}
+    {presi.length > 0 && <button type="button" className={`b${da.length ? '' : ' pieno grande'} gia-comprati`} onClick={chiudi}><Icona n="spunta" /> {presi.length === 1 ? 'Hai comprato 1 cosa' : `Hai comprato ${presi.length} cose`}: vedi «Le mie spese»</button>}
     {da.length > 0 && <div className="avvia">
       {daScegliere.length ? <p>Mancano {daScegliere.length === 1 ? '1 scelta' : `${daScegliere.length} scelte`}: tocca <b>Scegli</b> accanto a ogni cosa. Poi <b>Avvia giro spesa</b> ti dice in quali supermercati andare e cosa prendere in ognuno.</p>
         : <p>Hai scelto tutto. Tocca <b>Avvia giro spesa</b>: ti dico in quali supermercati andare, in che ordine e cosa prendere in ognuno.</p>}
@@ -486,9 +488,10 @@ function Giro({ annuncio, tutto = false }) {
     try { await api(`/api/lista/${riga.id}/dove`, { metodo: 'POST', corpo: { catena_libera: cid } }); await c.ricarica(); setMsg(cid === '' ? `«${riga.voce}» torna nel supermercato dove conviene.` : `«${riga.voce}» ${cid === 0 ? 'lo prendi dove capita' : `lo prendi da ${scelte.find((x) => x.id === cid)?.nome || 'lì'}`}${riga.libera ? ': me lo ricordo anche la prossima volta' : ''}.`); dispatchEvent(new Event('lista-cambiata')); }
     catch (e) { setMsg(e.message); }
   };
-  const spunta = async (riga) => {
+  // 0.84: si segna anche il supermercato dove l'hai preso (lo storico fa una spesa per supermercato e giorno)
+  const spunta = async (riga, cid = null) => {
     const nuovo = !presi.has(riga.id); const p2 = new Set(presi); if (nuovo) p2.add(riga.id); else p2.delete(riga.id); setPresi(p2); setMsg('');
-    try { await api(`/api/lista/${riga.id}?breve=1`, { metodo: 'PUT', corpo: { preso: nuovo } }); dispatchEvent(new Event('lista-cambiata')); } catch (e) { setMsg(e.message); }
+    try { await api(`/api/lista/${riga.id}?breve=1`, { metodo: 'PUT', corpo: { preso: nuovo, preso_da: cid || null } }); dispatchEvent(new Event('lista-cambiata')); } catch (e) { setMsg(e.message); }
   };
   const nonTrovato = (riga) => {
     const n2 = new Set(nonCera); if (n2.has(riga.id)) n2.delete(riga.id); else { n2.add(riga.id); setMsg(`«${riga.voce}» resta in lista: lo prendi la prossima volta.`); }
@@ -611,8 +614,8 @@ function Negozio({ n, liberi = [], propLib, presi, nonCera, onSpunta, onNonCera 
       .sort((a, b) => a.rango - b.rango || a.i - b.i)
       .map(({ x, l }) => { if (l) return <RigaLibera key={l.riga.id} l={l} qui={n.catena_id} {...propLib} />;
       const preso = presi.has(x.riga.id); const manca = !preso && nonCera.has(x.riga.id);
-      return <li key={x.riga.id} className={`${preso ? 'preso' : ''}${manca ? ' non-cera' : ''}`} onClick={(e) => { if (!e.target.closest('button, a')) onSpunta(x.riga); }}>
-        <button type="button" className="spunta" role="checkbox" aria-checked={preso} aria-label={`${x.riga.voce}: ${preso ? 'preso' : 'da prendere'}`} onClick={() => onSpunta(x.riga)}>{preso ? <Icona n="spunta" d={28} /> : null}</button>
+      return <li key={x.riga.id} className={`${preso ? 'preso' : ''}${manca ? ' non-cera' : ''}`} onClick={(e) => { if (!e.target.closest('button, a')) onSpunta(x.riga, n.catena_id); }}>
+        <button type="button" className="spunta" role="checkbox" aria-checked={preso} aria-label={`${x.riga.voce}: ${preso ? 'preso' : 'da prendere'}`} onClick={() => onSpunta(x.riga, n.catena_id)}>{preso ? <Icona n="spunta" d={28} /> : null}</button>
         {x.foto ? <img className="giro-foto" src={x.foto} alt="" loading="lazy" /> : null}
         <div><b>{x.riga.voce}</b><span>{x.confezioni ? `${x.confezioni} ${x.confezioni === 1 ? 'confezione' : 'confezioni'}` : quanto(x.riga.quantita, x.riga.unita)}: {x.prodotto}</span>
           <span className="etichette"><Semaforo q={x.qualita} piccolo sempre /><Etichette p={x} />{x.offerta && <span className="pill offerta">offerta</span>}<StatoPrezzo s={x.stato} al={x.valido_al} /></span>
@@ -631,8 +634,8 @@ function RigaLibera({ l, qui = null, chiedi = false, scelte = [], onSposta, pres
   const x = l.riga; const preso = presi.has(x.id); const manca = !preso && nonCera.has(x.id);
   const [cambia, setCambia] = useState(false);
   const altre = [...scelte.filter((c) => c.id !== qui), ...(qui === 0 ? [] : [{ id: 0, nome: 'Dove capita' }])];
-  return <li className={`libera-giro${preso ? ' preso' : ''}${manca ? ' non-cera' : ''}`} onClick={(e) => { if (!chiedi && !e.target.closest('button, a')) onSpunta(x); }}>
-    <button type="button" className="spunta" role="checkbox" aria-checked={preso} aria-label={`${x.voce}: ${preso ? 'preso' : 'da prendere'}`} onClick={() => onSpunta(x)}>{preso ? <Icona n="spunta" d={28} /> : null}</button>
+  return <li className={`libera-giro${preso ? ' preso' : ''}${manca ? ' non-cera' : ''}`} onClick={(e) => { if (!chiedi && !e.target.closest('button, a')) onSpunta(x, qui); }}>
+    <button type="button" className="spunta" role="checkbox" aria-checked={preso} aria-label={`${x.voce}: ${preso ? 'preso' : 'da prendere'}`} onClick={() => onSpunta(x, qui)}>{preso ? <Icona n="spunta" d={28} /> : null}</button>
     {l.foto ? <img className="giro-foto" src={l.foto} alt="" loading="lazy" /> : null}
     <div><b>{x.voce}</b><span>{quanto(x.quantita, x.unita)}: {x.libera ? 'lo scegli tu sul banco' : x.prodotto_scelto || 'il prodotto che hai scelto'}</span>
       <span className="etichette">{x.libera ? <span className="pill bolla-libera">Scegli al supermercato</span> : <span className="pill super-lista">spostato qui</span>}{l.da != null && <span className="muto piccolo">{x.libera ? 'da circa ' : ''}{euro(l.da)}</span>}</span></div>
@@ -860,9 +863,10 @@ function WhatsappApp() {
 }
 
 // ---------- scontrino fotografato: va a chi gestisce i prezzi ----------
-function FotoScontrino() {
+// 0.84: anche dentro una spesa fatta («invito»): i due tasti si vedono subito
+export function FotoScontrino({ invito = false }) {
   const camera = useRef(null); const galleria = useRef(null);
-  const [stato, setStato] = useState(''); const [ok, setOk] = useState(false); const [aperto, setAperto] = useState(false);
+  const [stato, setStato] = useState(''); const [ok, setOk] = useState(false); const [aperto, setAperto] = useState(invito);
   const scelta = async (e) => {
     const files = [...(e.target.files || [])]; e.target.value = ''; if (!files.length) return;
     setOk(false); setAperto(false); setStato(files.length > 1 ? `Mando ${files.length} scontrini…` : 'Mando lo scontrino…');
@@ -892,11 +896,11 @@ function FotoScontrino() {
     } catch (x) { setStato(x.message || 'Non sono riuscito a mandarlo: riprova'); }
   };
   return <>
-    <button type="button" className="b tasto-due tenue-marca" aria-expanded={aperto} onClick={() => setAperto((a) => !a)}><Icona n="scontrino" d={34} /><b>Scontrino</b><span>Scansiona la spesa fatta</span></button>
-    {aperto && <div className="due-vie" style={{ gridColumn: '1 / -1' }}>
+    {!invito && <button type="button" className="b tasto-due tenue-marca" aria-expanded={aperto} onClick={() => setAperto((a) => !a)}><Icona n="scontrino" d={34} /><b>Scontrino</b><span>Scansiona la spesa fatta</span></button>}
+    {aperto && <div className={`due-vie${invito ? ' nuda' : ''}`} style={{ gridColumn: '1 / -1' }}>
       <button type="button" className="b pieno" onClick={() => camera.current?.click()}><Icona n="foto" /> Fotografa adesso</button>
       <button type="button" className="b contorno viola" onClick={() => galleria.current?.click()}><Icona n="galleria" /> Scegli dalle foto</button>
-      <p className="muto piccolo">Puoi fotografare lo scontrino al momento, oppure fare la foto con calma e mandarla dopo dalle tue foto (anche più di una).</p>
+      {!invito && <p className="muto piccolo">Puoi fotografare lo scontrino al momento, oppure fare la foto con calma e mandarla dopo dalle tue foto (anche più di una).</p>}
     </div>}
     <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={scelta} />
     <input ref={galleria} type="file" accept="image/*" multiple hidden onChange={scelta} />

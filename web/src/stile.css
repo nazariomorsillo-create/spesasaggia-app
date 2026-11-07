@@ -5152,3 +5152,28 @@ form.cerca { position: sticky; top: 0; z-index: 7; background: var(--banco); pad
 .formato-semplice { display: flex; flex-direction: column; gap: 8px; }
 .formato-semplice input { font: inherit; font-size: 24px; font-weight: 700; padding: 10px 14px; border: 2px solid var(--linea); border-radius: 12px; width: 9ch; }
 .nuovo-veloce { display: flex; flex-direction: column; gap: 12px; }
+/* 0.84 le mie spese: supermercato, data e importo */
+.spese-elenco a > div {
+  flex: 1;
+}
+.spese-elenco .spesa-importo {
+  text-transform: none;
+  white-space: nowrap;
+  font-size: 1.15em;
+}
+.scontrino-spesa h2 {
+  align-items: center;
+  gap: 8px;
+  display: flex;
+}
+.scontrino-spesa .due-vie {
+  margin-top: 6px;
+}
+.scontrino-spesa > [role=status] {
+  margin-top: 10px;
+}
+.due-vie.nuda {
+  background: none;
+  border: 0;
+  padding: 0;
+}

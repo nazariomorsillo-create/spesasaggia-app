@@ -2,8 +2,10 @@
 // cosa conviene cambiare la prossima volta e il giudizio di ogni prodotto.
 import { useEffect, useState } from 'react';
 import { api, useDati, euro, num, quanto, Icona, Semaforo } from './base.jsx';
+import { FotoScontrino } from './App.jsx';
 
 const dataLunga = (d) => new Date(`${d}T12:00:00`).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const dataBreve = (d) => new Date(`${d}T12:00:00`).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', year: new Date().getFullYear() === Number(d.slice(0, 4)) ? undefined : 'numeric' });
 const PAROLE = { verde: 'Spesa promossa', giallo: 'Spesa così così', rosso: 'Spesa da ripensare', grigio: 'Pochi dati per giudicare' };
 const TINTE = { verde: '#4CB944', giallo: '#E3B505', rosso: '#C8382D', grigio: '#9AA59E' };
 
@@ -23,11 +25,13 @@ export function Spese() {
   if (l.errore) return <div className="errore">{l.errore}</div>;
   if (!l.dati) return <p className="muto">Carico…</p>;
   return <>
-    <div className="intesta"><h1>Le mie spese</h1><p>Ogni spesa chiusa, con la sua pagella. Tocca una data per vedere cosa cambiare la prossima volta.</p></div>
-    {!l.dati.length && <div className="vuota"><p>Ancora nessuna spesa chiusa.</p><p>Quando hai preso tutto, nella lista tocca <b>Com'è andata la spesa?</b>: la spesa finisce qui, con la pagella.</p><a className="b pieno grande" href="#lista">Vai alla lista</a></div>}
+    <div className="intesta"><h1>Le mie spese</h1><p>Una spesa per supermercato e giorno. Toccala per vedere cosa hai preso, il giudizio e cosa cambiare la prossima volta.</p></div>
+    {!l.dati.length && <div className="vuota"><p>Ancora nessuna spesa.</p><p>Nel giro spesa spunta le cose man mano che le prendi: finiscono qui, divise per supermercato.</p><a className="b pieno grande" href="#lista">Vai alla lista</a></div>}
+    {/* 0.84 (Nazario, 07/11): chiuse, solo supermercato, data e importo; si apre toccando */}
     {l.dati.length > 0 && <nav className="menu spese-elenco" aria-label="Le spese">{l.dati.map((s) => <a key={s.id} href={`#spese/${s.id}`}>
-      <Faccina colore={s.colore} d={44} />
-      <div><b>{dataLunga(s.data)}</b><span>{s.n === 1 ? '1 cosa' : `${s.n} cose`}{s.catene.length ? ` da ${s.catene.join(' e ')}` : ''}{s.totale != null ? ` · ${euro(s.totale)}` : ''}{s.media != null ? ` · media ${s.media}` : ''}</span></div>
+      <Faccina colore={s.colore} d={40} />
+      <div><b>{s.catene.length ? s.catene.join(' e ') : 'Spesa'}</b><span>{dataBreve(s.data)} · {s.n === 1 ? '1 cosa' : `${s.n} cose`}</span></div>
+      <b className="spesa-importo">{s.totale != null ? euro(s.totale) : '—'}</b>
     </a>)}</nav>}
   </>;
 }
@@ -47,7 +51,7 @@ export function Spesa({ id }) {
   </li>;
   return <>
     <a className="torna" href="#spese"><Icona n="indietro" d={22} />Le mie spese</a>
-    <div className="intesta"><h1>{dataLunga(d.data)}</h1><p>{d.n === 1 ? '1 cosa' : `${d.n} cose`}{d.catene.length ? ` da ${d.catene.join(' e ')}` : ''}{d.totale != null ? `, ${euro(d.totale)} circa` : ''}</p></div>
+    <div className="intesta"><h1>{d.catene.length ? d.catene.join(' e ') : 'La spesa'}</h1><p>{dataLunga(d.data)} · {d.n === 1 ? '1 cosa' : `${d.n} cose`}{d.totale != null ? `, ${euro(d.totale)} circa` : ''}</p></div>
     {d.bilancio && <section className="carta bilancio">
       <div className="bilancio-cifre">
         <div><span>Hai speso</span><b>{d.bilancio.speso == null ? '—' : euro(d.bilancio.speso)}</b></div>
@@ -85,6 +89,12 @@ export function Spesa({ id }) {
       {g.promossi.length > 0 && <><h3>Promossi</h3><ul className="voti">{g.promossi.map((v, i) => <Riga key={i} v={v} />)}</ul></>}
       {(g.ignoti.length > 0 || d.senzaProdotto.length > 0) && <><h3>Senza giudizio</h3><ul className="voti">{[...g.ignoti, ...d.senzaProdotto].map((v, i) => <Riga key={i} v={v} />)}</ul></>}
       <p className="muto piccolo">Il punteggio (0-100) viene da Nutri-Score, additivi, lavorazione, bio, origine e dai voti di chi compra. È un'indicazione, non un parere medico.</p>
+    </section>
+    {/* 0.84: lo scontrino aggiorna i prezzi veri (e la prossima volta il conto è più preciso) */}
+    <section className="carta scontrino-spesa">
+      <h2><Icona n="scontrino" d={26} /> Hai lo scontrino?</h2>
+      <p className="muto">Fotografalo (anche dopo, dalle tue foto): leggo i prezzi veri e li aggiorno nell'app.</p>
+      <FotoScontrino invito />
     </section>
   </>;
 }

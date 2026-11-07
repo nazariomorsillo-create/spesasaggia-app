@@ -170,9 +170,10 @@ function gruppiLiberi(db, righeLibere, negozi, casa, data, s) {
 // 0.61: una riga «libera» (generica, il prodotto si sceglie al supermercato) non entra nel conto del giro: si prende dove si va
 export const libera = (r) => !!r.libera && !r.prodotto_id && !r.catena_id;
 // 0.82: un prodotto preciso che nel giro hai spostato in un altro supermercato («non c'era, lo compro altrove»): va lì, fuori dal conto
-export const spostata = (r) => !libera(r) && r.catena_libera != null;
-export async function calcola(db, { data = oggi(), famiglia_id = null, s = impostazioni(db), salvaCasa = null, catene_ids = null, anchePresi = false } = {}) {
-  const tutteRighe = righeLista(db, famiglia_id, anchePresi);
+export const spostataRiga = (r) => !libera(r) && r.catena_libera != null;
+export async function calcola(db, { data = oggi(), famiglia_id = null, s = impostazioni(db), salvaCasa = null, catene_ids = null, anchePresi = false, soloRighe = null, normali = false } = {}) {
+  const tutteRighe = righeLista(db, famiglia_id, anchePresi).filter((r) => !soloRighe || soloRighe.has(r.id));
+  const spostata = (r) => !normali && spostataRiga(r);
   const avvisi = [];
   if (!tutteRighe.length) return { data, righe: tutteRighe, soluzioni: [], singoli: [], liberi: [], avvisi: ['La lista è vuota.'] };
   const liberi = tutteRighe.filter(libera).map(rigaCorta); const righe = tutteRighe.filter((r) => !libera(r) && !spostata(r));

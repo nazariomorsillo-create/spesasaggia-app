@@ -101,29 +101,47 @@ const vista = (row) => {
 export function spese(app, db, { Errore, id, imp, mieCatene, voto, oggi }) {
   const mia = (req, sid) => { const r = db.prepare('SELECT * FROM spese WHERE id = ? AND famiglia_id = ?').get(sid, req.famiglia.id); if (!r) throw new Errore('Spesa non trovata', 404); return r; };
 
-  // chiude la spesa: le cose prese vanno nello storico e spariscono dalla lista
+  // 0.84 (Nazario, 07/11): le cose spuntate non restano in lista. Vanno nello storico da sole, una spesa per supermercato e giorno
+  // (quello dove le hai spuntate nel giro); se nello stesso giorno torni nello stesso supermercato, si aggiungono a quella spesa.
+  // Succede quando apri «Le mie spese» e, comunque, il giorno dopo.
+  const archivia = async (req, { soloVecchie = false } = {}) => {
+    const f = req.famiglia.id; const s = imp(req); const oggiG = oggi();
+    const prese = db.prepare('SELECT id, preso_da, COALESCE(preso_il, ?) giorno FROM righe_lista WHERE famiglia_id = ? AND preso = 1').all(oggiG, f)
+      .filter((r) => !soloVecchie || r.giorno < oggiG);
+    if (!prese.length) return [];
+    const gruppi = new Map();
+    for (const r of prese) { const k = `${r.preso_da || 0}|${r.giorno}`; if (!gruppi.has(k)) gruppi.set(k, { catena_id: r.preso_da || null, giorno: r.giorno, ids: new Set() }); gruppi.get(k).ids.add(r.id); }
+    const fatte = []; const mie0 = mieCatene(req);
+    for (const g of gruppi.values()) {
+      const catena = g.catena_id ? db.prepare('SELECT id, nome FROM catene WHERE id = ?').get(g.catena_id) : null;
+      const mie = catena ? [catena.id] : mie0;
+      const r = await calcola(db, { data: g.giorno, famiglia_id: f, s, catene_ids: mie, salvaCasa: null, anchePresi: 'solo', soloRighe: g.ids, normali: true });
+      const migliore = r.soluzioni[0];
+      const voti = migliore ? valuta(db, migliore, { data: g.giorno, s, mie, voto }) : [];
+      const conVoto = new Set(voti.map((v) => v.riga_id));
+      const resto = r.righe.filter((x) => !conVoto.has(x.id)).map((x) => ({ voce: x.voce, riga_id: x.id, prodotto: x.prodotto_scelto || '', prodotto_id: null, catena: catena?.nome || '', quantita: x.quantita, unita: x.unita, costo: null, qualita: null, giudizio: null, alternativa: null }));
+      const nuove = [...voti, ...resto].map(({ riga_id, ...v }) => v);
+      const esiste = db.prepare('SELECT * FROM spese WHERE famiglia_id = ? AND data = ? AND catena_id IS ?').get(f, g.giorno, catena?.id ?? null);
+      const righe = [...(esiste ? JSON.parse(esiste.righe) : []), ...nuove];
+      const { media, colore } = pagella(righe);
+      const costi = righe.filter((v) => v.costo != null); const totale = costi.length ? r2(costi.reduce((t, v) => t + v.costo, 0)) : null;
+      const catene = catena ? [catena.nome] : migliore ? migliore.catene : [];
+      if (esiste) { db.prepare('UPDATE spese SET righe = ?, n = ?, totale = ?, media = ?, colore = ? WHERE id = ?').run(JSON.stringify(righe), righe.length, totale, media, colore, esiste.id); fatte.push(esiste.id); }
+      else fatte.push(db.prepare('INSERT INTO spese (famiglia_id, data, righe, catene, n, totale, media, colore, catena_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(f, g.giorno, JSON.stringify(righe), JSON.stringify(catene), righe.length, totale, media, colore, catena?.id ?? null).lastInsertRowid);
+      db.prepare(`DELETE FROM righe_lista WHERE id IN (${[...g.ids].map(() => '?').join(',')})`).run(...g.ids);
+    }
+    return fatte;
+  };
+
+  // «Com'è andata la spesa?»: le cose prese vanno subito nello storico (una spesa per supermercato e giorno)
   app.post('/api/spese', async (req) => {
-    const data = oggi(); const s = imp(req); const mie0 = mieCatene(req);
-    const scelti = db.prepare('SELECT DISTINCT catena_id FROM righe_lista WHERE famiglia_id = ? AND catena_id IS NOT NULL AND preso = 1').pluck().all(req.famiglia.id);
-    const mie = mie0 && mie0.length ? [...new Set([...mie0, ...scelti])] : mie0;
-    const prese = db.prepare('SELECT COUNT(*) n FROM righe_lista WHERE famiglia_id = ? AND preso = 1').get(req.famiglia.id).n;
-    if (!prese) throw new Errore('Non c\'è niente di preso da salvare: spunta le cose man mano che le prendi');
-    const r = await calcola(db, { data, famiglia_id: req.famiglia.id, s, catene_ids: mie, salvaCasa: null, anchePresi: 'solo' });
-    const migliore = r.soluzioni[0];
-    const voti = migliore ? valuta(db, migliore, { data, s, mie, voto }) : [];
-    const conVoto = new Set(voti.map((v) => v.riga_id));
-    // le cose prese senza prezzo o senza prodotto scelto restano nello storico, senza giudizio
-    const resto = r.righe.filter((x) => !conVoto.has(x.id)).map((x) => ({ voce: x.voce, riga_id: x.id, prodotto: x.prodotto_scelto || '', prodotto_id: x.prodotto_id && x.prodotto_scelto ? x.prodotto_id : null, catena: '', quantita: x.quantita, unita: x.unita, costo: null, qualita: null, giudizio: null, alternativa: null }));
-    const righe = [...voti, ...resto].map(({ riga_id, ...v }) => v);
-    const { media, colore } = pagella(righe);
-    const totale = voti.length ? r2(voti.reduce((t, v) => t + (v.costo || 0), 0)) : null;
-    const sid = db.prepare('INSERT INTO spese (famiglia_id, data, righe, catene, n, totale, media, colore) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(req.famiglia.id, data, JSON.stringify(righe), JSON.stringify(migliore ? migliore.catene : []), righe.length, totale, media, colore).lastInsertRowid;
-    db.prepare('DELETE FROM righe_lista WHERE famiglia_id = ? AND preso = 1').run(req.famiglia.id);
-    return vista(mia(req, sid));
+    const fatte = await archivia(req);
+    if (!fatte.length) throw new Errore('Non c\'è niente di preso da salvare: spunta le cose man mano che le prendi');
+    return { ids: fatte };
   });
-  app.get('/api/spese', async (req) => db.prepare('SELECT id, data, catene, n, totale, media, colore FROM spese WHERE famiglia_id = ? ORDER BY data DESC, id DESC LIMIT 200').all(req.famiglia.id)
+  app.get('/api/spese', async (req) => (await archivia(req), db).prepare('SELECT id, data, catene, n, totale, media, colore FROM spese WHERE famiglia_id = ? ORDER BY data DESC, id DESC LIMIT 200').all(req.famiglia.id)
     .map((x) => ({ ...x, catene: JSON.parse(x.catene) })));
   app.get('/api/spese/:id', async (req) => vista(mia(req, id(req.params.id))));
   app.delete('/api/spese/:id', async (req) => { mia(req, id(req.params.id)); db.prepare('DELETE FROM spese WHERE id = ?').run(id(req.params.id)); return { ok: true }; });
+  return archivia;
 }
