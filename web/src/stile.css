@@ -5196,3 +5196,20 @@ body::before {
   left: 0;
   right: 0;
 }
+/* 0.86: cestino nel giro e avviso «Annulla» sempre in vista sopra il menu */
+.acquisti.da-spuntare li button.link.togli-giro {
+  color: var(--rosso, #b3261e);
+  align-items: center;
+  gap: 6px;
+  display: inline-flex;
+}
+.tolto.galleggia {
+  z-index: 20;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  max-width: 588px;
+  margin: 0 auto;
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  box-shadow: 0 6px 20px #0000004d;
+}

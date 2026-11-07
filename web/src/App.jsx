@@ -471,6 +471,8 @@ function Giro({ annuncio, tutto = false }) {
   // 0.72: si spunta anche qui (vale per la lista); quello che non trovi lo lasci e resta in lista per la prossima volta
   const [presi, setPresi] = useState(() => new Set()); const [nonCera, setNonCera] = useState(() => new Set(nonTrovatiOggi()));
   const [msg, setMsg] = useState('');
+  const [tolto, setTolto] = useState(null);
+  useEffect(() => { if (!tolto) return undefined; const t = setTimeout(() => setTolto(null), 7000); return () => clearTimeout(t); }, [tolto]);
   const miei = useDati(tutto ? null : '/api/supermercati-giro');
   if (c.errore) return <div className="errore">{c.errore}</div>;
   if (!c.dati) return <p className="muto">Confronto i supermercati…</p>;
@@ -494,7 +496,22 @@ function Giro({ annuncio, tutto = false }) {
     const n2 = new Set(nonCera); if (n2.has(riga.id)) n2.delete(riga.id); else { n2.add(riga.id); setMsg(`«${riga.voce}» resta in lista: lo prendi la prossima volta.`); }
     setNonCera(n2); mem.scrivi('non-trovati', { giorno: oggiIso(), righe: [...n2] });
   };
-  const propLib = { scelte, onSposta: sposta, presi, nonCera, onSpunta: spunta, onNonCera: nonTrovato };
+  // 0.86 (Nazario, 07/11): cestino anche nel giro, per le cose già comprate o messe per sbaglio; per 7 secondi «Annulla» la rimette
+  const togli = async (riga) => {
+    setMsg('');
+    try {
+      const intera = (await api('/api/lista')).find((x) => x.id === riga.id) || null;
+      await api(`/api/lista/${riga.id}`, { metodo: 'DELETE' });
+      setTolto(intera); await c.ricarica(); dispatchEvent(new Event('lista-cambiata'));
+    } catch (e) { setMsg(e.message); }
+  };
+  const rimetti = async () => {
+    const r0 = tolto; setTolto(null); if (!r0) return;
+    try { await api('/api/lista', { metodo: 'POST', corpo: { voce_id: r0.voce_id, prodotto_id: r0.prodotto_id, quantita: r0.quantita, qualita: r0.qualita, marca: r0.marca, scelto: !!r0.scelto } }); await c.ricarica(); dispatchEvent(new Event('lista-cambiata')); }
+    catch (e) { setMsg(e.message); }
+  };
+  const avvisoTolto = tolto && <div className="tolto galleggia" role="status"><span>Tolto dalla lista: <b>{tolto.prodotto_id && tolto.scelto ? tolto.prodotto_scelto || tolto.voce : tolto.voce}</b></span><button type="button" className="b piccolo" onClick={rimetti}>Annulla</button></div>;
+  const propLib = { scelte, onSposta: sposta, presi, nonCera, onSpunta: spunta, onNonCera: nonTrovato, onTogli: togli };
   if (!tutto) {
     // 0.77 (Nazario, 06/11): una pagina per supermercato, si scorre col dito; in alto i nomi con quante cose restano
     const fuori = r.fuoriGiro || [];
@@ -520,6 +537,7 @@ function Giro({ annuncio, tutto = false }) {
     </div>;
     if (pagine.length) pagine.push({ chiave: 'riepilogo', titolo: 'Riepilogo', el: riepilogo });
     return (<>
+      {avvisoTolto}
       <a className="b tenue-marca torna-lista torna-su" href="#lista"><Icona n="indietro" d={22} /> Torna alla lista e aggiungi</a>
       <div className="intesta"><h1>Il giro della spesa</h1>{r.righe.length > 0 && <p>Scorri col dito da un supermercato all'altro. Tocca un prodotto per depennarlo.</p>}</div>
       {!r.righe.length && <div className="vuota"><p>La lista è vuota: prima scrivi o detta cosa ti serve.</p><a className="b pieno grande" href="#lista">Vai alla lista</a></div>}
@@ -532,6 +550,7 @@ function Giro({ annuncio, tutto = false }) {
     </>);
   }
   return (<>
+    {avvisoTolto}
     {!tutto && <a className="b tenue-marca torna-lista torna-su" href="#lista"><Icona n="indietro" d={22} /> Torna alla lista e aggiungi</a>}
     <div className="intesta"><h1>{tutto ? 'Com\'è andata la spesa' : 'Il giro della spesa'}</h1>{r.righe.length > 0 && <p>{tutto ? `Per ${r.righe.length === 1 ? '1 cosa' : `${r.righe.length} cose`} della tua lista` : 'Ogni supermercato ha la sua lista: vai da uno oggi e dagli altri quando vuoi. Spunta quello che prendi; quello che non trovi resta in lista.'}</p>}</div>
     {!r.righe.length && !tutto && <div className="vuota"><p>La lista è vuota: prima scrivi o detta cosa ti serve.</p><a className="b pieno grande" href="#lista">Vai alla lista</a></div>}
@@ -621,13 +640,17 @@ function Negozio({ n, liberi = [], propLib, presi, nonCera, onSpunta, onNonCera 
         {!preso && <div className="libera-azioni non-cera-tasto">
           <button type="button" className="link" onClick={() => onNonCera(x.riga)}>{manca ? 'Rimetti: l\'ho trovato' : 'Non c\'era: resta in lista'}</button>
           <AltroSuper riga={x.riga} qui={n.catena_id} scelte={propLib.scelte} onSposta={propLib.onSposta} />
+          {propLib.onTogli && <TogliGiro onTogli={() => propLib.onTogli(x.riga)} />}
         </div>}</li>; })}</ul>
     {fatti > 0 && <p className="muto">{fatti === tutte.length ? `Da ${n.catena} hai preso tutto.` : `Presi ${fatti} su ${tutte.length}.`}</p>}
     <a className="b pieno-verde portami" href={strada(n)} target="_blank" rel="noopener"><Icona n="mappa" /> Portami da {n.catena}</a>
   </section>;
 }
 // 0.74: una cosa generica nel giro: la scegli tu sul banco, nel supermercato che hai scelto tu (lo puoi cambiare); il prezzo è indicativo
-function RigaLibera({ l, qui = null, chiedi = false, scelte = [], onSposta, presi, nonCera, onSpunta, onNonCera }) {
+function TogliGiro({ onTogli }) {
+  return <button type="button" className="link togli-giro" onClick={onTogli}><Icona n="cestino" d={20} /> Togli dalla lista</button>;
+}
+function RigaLibera({ l, qui = null, chiedi = false, scelte = [], onSposta, presi, nonCera, onSpunta, onNonCera, onTogli }) {
   const x = l.riga; const preso = presi.has(x.id); const manca = !preso && nonCera.has(x.id);
   const [cambia, setCambia] = useState(false);
   const altre = [...scelte.filter((c) => c.id !== qui), ...(qui === 0 ? [] : [{ id: 0, nome: 'Dove capita' }])];
@@ -642,6 +665,7 @@ function RigaLibera({ l, qui = null, chiedi = false, scelte = [], onSposta, pres
         ? <div className="scelte">{altre.map((c) => <button key={c.id} type="button" onClick={() => { setCambia(false); onSposta(x, c.id); }}>{c.nome}</button>)}</div>
         : <button type="button" className="link" onClick={() => setCambia(true)}>{x.libera ? 'Cambia supermercato' : 'Compralo in un altro supermercato'}</button>}
       {!x.libera && <button type="button" className="link" onClick={() => onSposta(x, '')}>Rimettilo dove conviene</button>}
+      {onTogli && <TogliGiro onTogli={() => onTogli(x)} />}
     </div>}
   </li>;
 }
