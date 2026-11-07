@@ -9,11 +9,17 @@ const LIVELLO = { rosso: 'Da evitare se puoi', giallo: 'Da limitare', verde: 'Ne
 export function Scheda({ id, chiedi }) {
   const s = useDati(`/api/prodotti/${id}`); const voci = useDati('/api/voci'); const catene = useDati('/api/catene');
   const [modifica, setModifica] = useState(false); const [msg, setMsg] = useState(''); const [err, setErr] = useState('');
-  const [prezzo, setPrezzo] = useState(!!chiedi);
+  // 0.87: «manca» = codice a barre di un prodotto già nell'app: si chiede solo quello che manca (il prezzo solo se non c'è)
+  const [prezzo, setPrezzo] = useState(!!chiedi && chiedi !== 'manca');
   const [saltato, setSaltato] = useState(false);
   if (s.errore) return <div className="errore">{s.errore}</div>;
   if (!s.dati) return <p className="muto">Carico…</p>;
   const p = s.dati; const g = giudizioDi(p.qualita);
+  const serveEtichetta = !p.non_alimentare && !p.sfuso && p.reparto !== 'ortofrutta' && (!p.nutriscore || p.additivi == null || !p.ingredienti);
+  const etichetta = <LeggiEtichetta evidente={!g} soloIngredienti={!!p.foto} titolo={p.foto ? (g ? 'Rendi il giudizio più preciso: fotografa gli ingredienti' : 'Dai un giudizio a questo prodotto: fotografa gli ingredienti') : g ? 'Rendi il giudizio più preciso: fotografa l\'etichetta' : 'Dai un giudizio a questo prodotto: fotografa l\'etichetta'} testoFatto="Ho aggiunto alla scheda i dati che mancavano." onLetta={async (l) => {
+        const r = await api(`/api/prodotti/${p.id}/integra`, { metodo: 'POST', corpo: { ingredienti: l.ingredienti, additivi: Array.isArray(l.additivi) ? l.additivi : undefined, nutriscore: l.nutriscore, valori: l.valori || undefined, imballaggio: l.imballaggio || undefined, produttore: l.produttore, descrizione: l.descrizione, origine: l.origine || undefined, bio: l.bio || undefined, foto: p.foto ? undefined : l.foto, ...(l.quantita > 0 ? { quantita: l.quantita, formato_unita: l.unita, pezzi: l.pezzi } : {}) } });
+        setMsg(r.campi?.length ? `Ho aggiunto: ${r.campi.join(', ')}.` : 'La scheda aveva già questi dati.'); await s.ricarica();
+      }} />;
   const chiediPrezzo = prezzo || (!saltato && !p.ultimi.length);
   // Dopo l'unione resta una scheda sola: se è l'altra, ci si va
   const unito = (nuovoId, t) => { setMsg(t); if (nuovoId && nuovoId !== p.id) location.hash = `#prodotto/${nuovoId}`; else s.ricarica(); };
@@ -21,10 +27,12 @@ export function Scheda({ id, chiedi }) {
   const misura = (q) => (p.unita === 'kg' && q < 1 ? `${Math.round(q * 1000)} g` : p.unita === 'l' && q < 1 ? `${Math.round(q * 1000)} ml` : `${num(q, 3)} ${p.unita === 'pz' ? (q === 1 ? (p.pezzo || 'pezzo') : plurale(p.pezzo || 'pezzo')) : p.unita}`);
   const formato = p.sfuso ? `sfuso, al ${perUnita(p.unita, p.pezzo)}` : p.quantita > 0 ? (p.pezzi > 1 ? `confezione da ${p.pezzi} × ${misura(p.quantita / p.pezzi)} (${misura(p.quantita)})` : `confezione da ${misura(p.quantita)}`) : 'formato da completare';
   const rossi = p.additivi?.filter((x) => x.livello === 'rosso').length || 0; const gialli = p.additivi?.filter((x) => x.livello === 'giallo').length || 0;
+  const inAlto = chiedi === 'manca' && serveEtichetta;
   if (modifica) return <section className="carta"><h2>Modifica la scheda</h2><FormProdotto iniziale={p} voci={voci} catene={catene.dati} onSalvato={() => { setModifica(false); s.ricarica(); }} onAnnulla={() => setModifica(false)} /></section>;
   return <>
     <a className="torna" href={`#prezzi/${p.voce_id}`}><Icona n="indietro" d={22} />{p.voce}</a>
     {chiediPrezzo && <PrezzoVeloce p={p} nuovo={chiedi === 'nuovo'} vuoto={!p.ultimi.length} onFatto={(t) => { setPrezzo(false); setMsg(t); s.ricarica(); history.replaceState(null, '', `#prodotto/${p.id}`); }} onSalta={() => { setPrezzo(false); setSaltato(true); history.replaceState(null, '', `#prodotto/${p.id}`); }} />}
+    {chiedi === 'manca' && <CosaManca p={p} g={g} etichetta={serveEtichetta ? etichetta : null} />}
     <Doppioni key={`${p.id}-${p.ultimi.map((x) => x.id).join('.')}`} p={p} onUnito={unito} />
     <section className="scheda">
       <div className="scheda-testa">
@@ -105,11 +113,8 @@ export function Scheda({ id, chiedi }) {
       {p.descrizione && <p>{p.descrizione}</p>}
       {p.ingredienti && <div className="ingredienti"><h2>{p.non_alimentare ? 'Composizione' : 'Ingredienti'}</h2><p>{p.ingredienti}</p></div>}
       {p.note && <p className="muto">{p.note}</p>}
-      {/* mancano dati per il giudizio: si leggono dalle foto dell'etichetta */}
-      {!p.non_alimentare && !p.sfuso && p.reparto !== 'ortofrutta' && (!p.nutriscore || p.additivi == null || !p.ingredienti) && <LeggiEtichetta evidente={!g} soloIngredienti={!!p.foto} titolo={p.foto ? (g ? 'Rendi il giudizio più preciso: fotografa gli ingredienti' : 'Dai un giudizio a questo prodotto: fotografa gli ingredienti') : g ? 'Rendi il giudizio più preciso: fotografa l\'etichetta' : 'Dai un giudizio a questo prodotto: fotografa l\'etichetta'} testoFatto="Ho aggiunto alla scheda i dati che mancavano." onLetta={async (l) => {
-        const r = await api(`/api/prodotti/${p.id}/integra`, { metodo: 'POST', corpo: { ingredienti: l.ingredienti, additivi: Array.isArray(l.additivi) ? l.additivi : undefined, nutriscore: l.nutriscore, valori: l.valori || undefined, imballaggio: l.imballaggio || undefined, produttore: l.produttore, descrizione: l.descrizione, origine: l.origine || undefined, bio: l.bio || undefined, foto: p.foto ? undefined : l.foto, ...(l.quantita > 0 ? { quantita: l.quantita, formato_unita: l.unita, pezzi: l.pezzi } : {}) } });
-        setMsg(r.campi?.length ? `Ho aggiunto: ${r.campi.join(', ')}.` : 'La scheda aveva già questi dati.'); await s.ricarica();
-      }} />}
+      {/* mancano dati per il giudizio: si leggono dalle foto dell'etichetta (dopo la scansione è già in alto) */}
+      {serveEtichetta && !inAlto && etichetta}
 
     </section>
 
@@ -252,6 +257,26 @@ function UnisciCerca({ p, onUnito }) {
   </section>;
 }
 // Senza foto: il riquadro è un pulsante «Aggiungi foto»; si sceglie se farla con la fotocamera o prenderla dalla galleria
+// 0.87 (Nazario, 07/11): dopo aver scansionato un prodotto che c'è già si vede cosa ha già e si chiede solo quello che manca.
+// Il prezzo non si richiede: se è cambiato, «Correggi il prezzo» accanto al prezzo.
+function CosaManca({ p, g, etichetta }) {
+  const dove = []; for (const x of [...(p.ultimi || [])].sort((a, b) => a.prezzo - b.prezzo)) if (!dove.some((y) => y.catena_id === x.catena_id)) dove.push(x);
+  const formatoOk = p.sfuso || p.quantita > 0;
+  const manca = [!p.ultimi.length && 'il prezzo', !p.foto && 'la foto', !formatoOk && 'il formato', etichetta && 'il giudizio'].filter(Boolean);
+  return <section className="carta cosa-manca">
+    <h2>{manca.length ? 'Lo conosco già: manca solo poco' : 'Lo conosco già: non manca niente'}</h2>
+    <p><b>{p.nome}</b></p>
+    <ul className="gia-ce">
+      {p.ultimi.length > 0 && <li className="si">✓ Prezzo: {dove.slice(0, 3).map((x) => `${euro(x.prezzo)} da ${x.catena}`).join(', ')}</li>}
+      {p.foto && <li className="si">✓ Foto</li>}
+      {formatoOk && <li className="si">✓ Formato</li>}
+      {g && <li className="si">✓ Giudizio: {g.parola}</li>}
+      {manca.map((m) => <li key={m} className="no">• Manca {m}{m === 'la foto' ? ': tocca «Aggiungi foto» qui sotto' : m === 'il formato' ? ': scrivilo nei prezzi qui sotto' : m === 'il prezzo' ? ': scrivilo qui sopra' : m === 'il giudizio' ? (p.foto ? ': fotografa gli ingredienti qui sotto' : ': fotografa l\'etichetta qui sotto') : ''}</li>)}
+    </ul>
+    {p.ultimi.length > 0 && <p className="muto piccolo">Se il prezzo è cambiato, tocca «Correggi il prezzo» accanto al prezzo; se l'hai visto in un altro supermercato, «+ Prezzo in un altro supermercato».</p>}
+    {etichetta}
+  </section>;
+}
 function AggiungiFoto({ p, onFatto }) {
   const [apri, setApri] = useState(false); const [stato, setStato] = useState(''); const camera = useRef(null); const galleria = useRef(null);
   const scelta = async (e) => {

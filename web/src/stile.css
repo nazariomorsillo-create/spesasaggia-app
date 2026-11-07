@@ -5213,3 +5213,20 @@ body::before {
   right: 16px;
   box-shadow: 0 6px 20px #0000004d;
 }
+/* 0.87 dopo la scansione: cosa c'è già e cosa manca */
+.cosa-manca .gia-ce {
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  font-size: 18px;
+  list-style: none;
+  display: flex;
+}
+.cosa-manca .gia-ce .si {
+  color: var(--verde-scuro);
+}
+.cosa-manca .gia-ce .no {
+  color: var(--marca-scura);
+  font-weight: 700;
+}

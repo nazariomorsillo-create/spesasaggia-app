@@ -397,7 +397,7 @@ function Ricerca({ onAggiungi, onAvviso, onModulo, inMezzo = null }) {
   };
   const scansionato = async (ean) => {
     setErr('');
-    try { const r = await api(`/api/scansiona/${encodeURIComponent(ean)}`); if (r.prodotto_id) location.hash = r.nuovo ? `#prodotto/${r.prodotto_id}/nuovo` : `#prodotto/${r.prodotto_id}/prezzo`; else setScansione(r); } catch (e) { setErr(e.message); }
+    try { const r = await api(`/api/scansiona/${encodeURIComponent(ean)}`); if (r.prodotto_id) location.hash = r.nuovo ? `#prodotto/${r.prodotto_id}/nuovo` : `#prodotto/${r.prodotto_id}/manca`; /* 0.87: già conosciuto → solo quello che manca */ else setScansione(r); } catch (e) { setErr(e.message); }
   };
   // salvato: alla scheda; il prezzo si chiede ancora solo se non l'ha scritto nel modulo
   // 0.82: prodotto che non conosce nessuno → percorso veloce (due foto, prezzo, salva); se forse c'è già → il modulo con «È questo?»
