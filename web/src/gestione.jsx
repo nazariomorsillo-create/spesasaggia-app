@@ -1,7 +1,7 @@
 // Gestione (per chi carica prezzi e prodotti): rilevazione, schede, confronto, negozi, scontrini, impostazioni, pubblicità.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { lettoreCodici } from './codice.js';
-import { api, useDati, euro, num, data, UNITA, QUALITA, REPARTI, TIPI, conVirgola, Etichette, StatoPrezzo, mem, ScattaFoto, ScegliCatena, FormatoConfezione, FORMATO_VUOTO, datiFormato, numeroDa, Semaforo, Icona, riduciFoto, quanto, Cartellino } from './base.jsx';
+import { api, useDati, euro, num, data, UNITA, QUALITA, REPARTI, TIPI, conVirgola, Etichette, StatoPrezzo, mem, ScattaFoto, ScegliCatena, FormatoConfezione, FORMATO_VUOTO, UNITA_FORMATO, datiFormato, numeroDa, Semaforo, Icona, riduciFoto, quanto, Cartellino, plurale } from './base.jsx';
 
 function CercaVoce({ onScelta, etichetta = 'Cosa compri?', voci, ricaricaVoci }) {
   const [q, setQ] = useState(''); const [nuova, setNuova] = useState(null); const [err, setErr] = useState('');
@@ -763,9 +763,13 @@ function NuovoVeloce({ ean, avviso, onFatto, onAnnulla }) {
   // la voce la propone l'app dal nome, in silenzio
   useEffect(() => {
     if (cambiaVoce || nome.trim().length < 3) return undefined;
-    const t = setTimeout(() => api(`/api/voci/proposta?nome=${encodeURIComponent(nome.trim())}`).then((r) => setVoce(r.voci[0] ? { id: r.voci[0].id, nome: r.voci[0].nome } : r.nuova ? { nuova: r.nuova, nome: r.nuova.nome } : null)).catch(() => {}), 350);
+    const t = setTimeout(() => api(`/api/voci/proposta?nome=${encodeURIComponent(nome.trim())}`).then((r) => setVoce(r.voci[0] ? { id: r.voci[0].id, nome: r.voci[0].nome, unita: r.voci[0].unita, pezzo: r.voci[0].pezzo } : r.nuova ? { nuova: r.nuova, nome: r.nuova.nome } : null)).catch(() => {}), 350);
     return () => clearTimeout(t);
   }, [nome, cambiaVoce]);
+  // 0.93 (Nazario, 07/11): una voce che si confronta a lavaggi, rotoli o capsule vuole il formato in quell'unità (il detersivo
+  // non in litri ma in lavaggi): il tasto giusto compare e si seleziona da solo, con la spiegazione
+  const pezzo = voce?.unita === 'pz' && voce.pezzo ? voce.pezzo : '';
+  useEffect(() => { if (pezzo && fu.u !== 'pz') setFu({ n: '', u: 'pz', pezzi: '', modo: 'uno' }); }, [pezzo]); // eslint-disable-line
   const corpo = async (voceId) => {
     let foto = letto?.foto || '';
     if (!foto && davanti) foto = (await api('/api/foto', { metodo: 'POST', corpo: { dati: davanti } }).catch(() => ({ foto: '' }))).foto;
@@ -818,10 +822,11 @@ function NuovoVeloce({ ean, avviso, onFatto, onAnnulla }) {
         <label className="campo" style={{ flex: 1 }}>Nome del prodotto<input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Es. Filetti di sgombro Delicius" /></label></div>
       <div className="colonna"><span className="nome-gruppo">Formato</span>
         <div className="formato-semplice"><input inputMode="decimal" value={fu.n} onChange={(e) => setFu({ ...fu, n: e.target.value })} placeholder="500" aria-label="Quanto contiene" />
-          <div className="scelte">{[['g', 'g'], ['kg', 'kg'], ['ml', 'ml'], ['l', 'litri'], ['pz', 'pezzi']].map(([u, t]) => <button key={u} type="button" aria-pressed={fu.u === u} onClick={() => setFu({ ...fu, u })}>{t}</button>)}</div></div>
+          <div className="scelte">{UNITA_FORMATO(pezzo).map(([u, t]) => <button key={u} type="button" aria-pressed={fu.u === u} onClick={() => setFu({ ...fu, u })}>{t}</button>)}</div></div>
+        {pezzo && <span className="muto piccolo">«{voce.nome}» si confronta a {plurale(pezzo)}: scrivi quanti {plurale(pezzo)} fa la confezione (c'è scritto sopra). Se non lo trovi, lascia vuoto: lo completi dopo.</span>}
         {Number(fu.pezzi) > 1 && <span className="muto piccolo">Confezione da {fu.pezzi} pezzi, {fu.n} {fu.u} in tutto</span>}</div>
       {voce && !cambiaVoce && <p className="muto piccolo">Lo metto in: <b>{voce.nome}</b> · <button type="button" className="link" onClick={() => setCambiaVoce(true)}>cambia</button></p>}
-      {cambiaVoce && <CercaVoce etichetta="Che cos'è?" voci={voci.dati} ricaricaVoci={voci.ricarica} onScelta={(x) => { setVoce({ id: x.id, nome: x.nome }); setCambiaVoce(false); }} />}
+      {cambiaVoce && <CercaVoce etichetta="Che cos'è?" voci={voci.dati} ricaricaVoci={voci.ricarica} onScelta={(x) => { setVoce({ id: x.id, nome: x.nome, unita: x.unita, pezzo: x.pezzo }); setCambiaVoce(false); }} />}
       <span className="nome-gruppo">Dove l'hai preso</span>
       <ScegliCatena valore={catena} onScelta={setCatena} />
       <label className="campo">Prezzo della confezione<span className="euro-campo"><input className="grosso" inputMode="decimal" value={prezzo} onChange={(e) => setPrezzo(e.target.value)} placeholder="0,00" /><b>€</b></span></label>

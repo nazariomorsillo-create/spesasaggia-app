@@ -537,15 +537,19 @@ app.post('/api/prodotti/:id/integra', async (req) => {
   }
   if (nuovo.ean && db.prepare('SELECT 1 FROM prodotti WHERE ean = ? AND id != ?').get(nuovo.ean, p.id)) { delete nuovo.ean; campi.splice(campi.indexOf('codice a barre'), 1); }
   if (!p.bio && d.bio === 1 && b.bio !== undefined) { nuovo.bio = 1; campi.push('bio'); }
-  // il formato, se mancava
+  // il formato, se mancava. 0.93: se è scritto in un'unità diversa da quella della voce (litri per un detersivo che si
+  // confronta a lavaggi) non blocca l'unione: il resto si salva e il formato resta da completare nella scheda
+  let avviso = '';
   if (!p.sfuso && !(p.quantita > 0) && d.quantita > 0 && b.formato_unita) {
-    const f = { ...d, voce_id: p.voce_id }; adattaFormato(f, b.formato_unita, p.id);
-    nuovo.quantita = f.quantita; if (d.pezzi && !p.pezzi) nuovo.pezzi = d.pezzi; campi.push('formato');
+    try {
+      const f = { ...d, voce_id: p.voce_id }; adattaFormato(f, b.formato_unita, p.id);
+      nuovo.quantita = f.quantita; if (d.pezzi && !p.pezzi) nuovo.pezzi = d.pezzi; campi.push('formato');
+    } catch (e) { if (!(e instanceof Errore)) throw e; avviso = `Il formato non l'ho messo: ${e.message}`; }
   }
   const chiavi = Object.keys(nuovo);
   if (chiavi.length) db.prepare(`UPDATE prodotti SET ${chiavi.map((k) => `${k} = @${k}`).join(', ')} WHERE id = @id`).run({ ...nuovo, id: p.id });
   if (nuovo.quantita) for (const pr of db.prepare('SELECT * FROM prezzi WHERE prodotto_id = ?').all(p.id)) db.prepare('UPDATE prezzi SET unitario = ? WHERE id = ?').run(pr.prezzo / nuovo.quantita, pr.id);
-  return { prodotto: prodottoCompleto(p.id), campi };
+  return { prodotto: prodottoCompleto(p.id), campi, avviso };
 });
 // ---------- foto dei prodotti: scattata col telefono, ridotta nel browser, salvata qui ----------
 const CARTELLA_FOTO = path.join(path.dirname(process.env.FILE_DATI || path.join(RADICE, 'data/spesa.sqlite')), 'foto');
