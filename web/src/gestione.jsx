@@ -149,8 +149,10 @@ const DisegnoRetro = () => <svg viewBox="0 0 120 120" width="96" height="96" ari
   <path d="M10 10h14M10 10v14M110 10H96M110 10v14M10 110h14M10 110V96M110 110H96M110 110V96" stroke="#2E8B2A" strokeWidth="4" fill="none" />
 </svg>;
 // l'app compila la scheda dalle foto dell'etichetta: il davanti, poi gli ingredienti (fino a 2 foto), poi la lettura sul server
-function LeggiEtichetta({ onLetta, evidente, titolo = 'Compilo io la scheda dalle foto dell\'etichetta', testoFatto = 'Ho compilato i campi qui sotto: controllali e salva.' }) {
-  const [fronte, setFronte] = useState(''); const [retro, setRetro] = useState([]); const [passo, setPasso] = useState('inizio');
+// 0.83: soloIngredienti = il prodotto ha già nome e foto: manca solo il giudizio, quindi si fotografano solo gli ingredienti
+function LeggiEtichetta({ onLetta, evidente, soloIngredienti = false, titolo = 'Compilo io la scheda dalle foto dell\'etichetta', testoFatto = 'Ho compilato i campi qui sotto: controllali e salva.' }) {
+  const inizio = soloIngredienti ? 'retro' : 'inizio';
+  const [fronte, setFronte] = useState(''); const [retro, setRetro] = useState([]); const [passo, setPasso] = useState(inizio);
   const [prepara, setPrepara] = useState(''); const [err, setErr] = useState('');
   const fotocamera = useRef(null); const galleria = useRef(null); const quale = useRef('fronte');
   const apri = (chi, daGalleria = false) => { quale.current = chi; setErr(''); (daGalleria ? galleria : fotocamera).current?.click(); };
@@ -167,8 +169,9 @@ function LeggiEtichetta({ onLetta, evidente, titolo = 'Compilo io la scheda dall
     setPasso('lettura'); setErr('');
     try { await onLetta(await api('/api/etichetta', { metodo: 'POST', corpo: { foto: [fronte, ...retro].filter(Boolean) } })); setPasso('fatto'); } catch (e) { setErr(e.message); setPasso('errore'); }
   };
-  const rifai = () => { setFronte(''); setRetro([]); setPasso('inizio'); setErr(''); };
-  const numero = passo === 'inizio' || passo === 'fronte-fatto' ? 1 : passo === 'retro' || passo === 'retro-fatto' ? 2 : 3;
+  const rifai = () => { setFronte(''); setRetro([]); setPasso(inizio); setErr(''); };
+  const numero = (passo === 'inizio' || passo === 'fronte-fatto' ? 1 : passo === 'retro' || passo === 'retro-fatto' ? 2 : 3) - (soloIngredienti ? 1 : 0);
+  const passi = soloIngredienti ? ['Ingredienti', 'Lettura'] : ['Davanti', 'Ingredienti', 'Lettura'];
   const Scatta = ({ chi, testo }) => <div className="riga" style={{ flexWrap: 'wrap' }}>
     <button type="button" className="b pieno grande" onClick={() => apri(chi)}><Icona n="foto" /> {testo}</button>
     <button type="button" className="b" onClick={() => apri(chi, true)}><Icona n="galleria" /> Dalle foto</button>
@@ -176,7 +179,7 @@ function LeggiEtichetta({ onLetta, evidente, titolo = 'Compilo io la scheda dall
   if (passo === 'fatto') return <div className="leggi-etichetta fatto"><b>✓ Etichetta letta</b><span className="muto piccolo">{testoFatto}</span><button type="button" className="link" onClick={rifai}>Rifai le foto</button></div>;
   return <div className={`leggi-etichetta${evidente ? ' evidente' : ''}`}>
     <b className="titolo-etichetta">{titolo}</b>
-    <ol className="passi-etichetta" aria-label="Passi">{['Davanti', 'Ingredienti', 'Lettura'].map((t, i) => <li key={t} className={i + 1 === numero ? 'ora' : i + 1 < numero ? 'fatto' : ''}><span>{i + 1 < numero ? '✓' : i + 1}</span>{t}</li>)}</ol>
+    <ol className="passi-etichetta" aria-label="Passi">{passi.map((t, i) => <li key={t} className={i + 1 === numero ? 'ora' : i + 1 < numero ? 'fatto' : ''}><span>{i + 1 < numero ? '✓' : i + 1}</span>{t}</li>)}</ol>
     {passo === 'inizio' && <div className="passo-etichetta"><DisegnoDavanti /><div className="colonna">
       <p className="frase-etichetta">Fotografa il <b>DAVANTI</b></p>
       <p className="muto">nome, marca e peso</p>
@@ -190,9 +193,9 @@ function LeggiEtichetta({ onLetta, evidente, titolo = 'Compilo io la scheda dall
       <p className="frase-etichetta">Fotografa gli <b>INGREDIENTI</b></p>
       <p className="muto">e la tabella dei valori nutrizionali, da vicino</p>
       <Scatta chi="retro" testo="Fotografa gli ingredienti" />
-      <button type="button" className="link" onClick={leggi}>Non ci sono: leggi solo il davanti</button>
+      {!soloIngredienti && <button type="button" className="link" onClick={leggi}>Non ci sono: leggi solo il davanti</button>}
     </div></div>}
-    {passo === 'retro-fatto' && <div className="passo-etichetta"><div className="riga">{[fronte, ...retro].map((f, i) => <img key={i} src={f} alt={`Foto ${i + 1}`} className="miniatura piccola" />)}</div><div className="colonna">
+    {passo === 'retro-fatto' && <div className="passo-etichetta"><div className="riga">{[fronte, ...retro].filter(Boolean).map((f, i) => <img key={i} src={f} alt={`Foto ${i + 1}`} className="miniatura piccola" />)}</div><div className="colonna">
       <p className="frase-etichetta">Si leggono bene?</p>
       <p className="muto">La tabella è su un altro lato? Aggiungi una foto.</p>
       <div className="riga" style={{ flexWrap: 'wrap' }}><button type="button" className="b pieno grande" onClick={leggi}>Leggi l'etichetta</button>{retro.length < 2 && <button type="button" className="b" onClick={() => apri('retro')}>Aggiungi un'altra foto</button>}<button type="button" className="b" onClick={() => { setRetro([]); setPasso('retro'); }}>Rifalla</button></div>
