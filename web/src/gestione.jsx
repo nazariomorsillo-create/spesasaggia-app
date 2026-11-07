@@ -85,42 +85,68 @@ function Scanner({ onCodice, etichetta = '📷 Inquadra il codice a barre', clas
   const disponibile = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
   useEffect(() => {
     if (!attivo) return undefined;
-    let fermo = false; let ferma = null;
+    let fermo = false;
     const trovato = (codice) => { if (fermo) return; fermo = true; setAttivo(false); onCodice(codice); };
     (async () => {
       try {
         const stream = await prendiCamera();
         if (fermo || !v.current) return;
-        v.current.srcObject = stream; await v.current.play();
+        const video = v.current;
+        video.srcObject = stream; await video.play().catch(() => {});
+        // 0.91: si legge solo quando il video ha davvero le sue misure e immagini nuove (sull'iPhone all'inizio ha 0×0 o l'ultima
+        // immagine della volta prima: così non legge niente, o legge il codice vecchio)
+        const attesa = (ms) => new Promise((r) => setTimeout(r, ms));
+        const nuovaImmagine = () => new Promise((r) => (video.requestVideoFrameCallback ? video.requestVideoFrameCallback(() => r()) : setTimeout(r, 60)));
+        while (!fermo && !(video.videoWidth > 0)) await attesa(50);
+        for (let k = 0; k < 3 && !fermo; k++) await nuovaImmagine();
+        await attesa(250);
+        // il pezzo di immagine dentro il riquadro bianco (un po' più largo), a piena risoluzione: più veloce e più preciso
+        const tela = document.createElement('canvas'); const ctx = tela.getContext('2d', { willReadFrequently: true });
+        const ritaglia = (tutto) => {
+          const vw = video.videoWidth; const vh = video.videoHeight; if (!vw || !vh) return null;
+          let sx = 0; let sy = 0; let sw = vw; let sh = vh;
+          if (!tutto) {
+            const W = video.clientWidth || vw; const H = video.clientHeight || vh; const sc = Math.max(W / vw, H / vh);
+            const ox = (vw * sc - W) / 2; const oy = (vh * sc - H) / 2;
+            sx = Math.max(0, (0.04 * W + ox) / sc); sw = Math.min(vw - sx, (0.92 * W) / sc);
+            sy = Math.max(0, (0.18 * H + oy) / sc); sh = Math.min(vh - sy, (0.64 * H) / sc);
+          }
+          const k = Math.min(1, 1600 / sw); tela.width = Math.round(sw * k); tela.height = Math.round(sh * k);
+          ctx.drawImage(video, sx, sy, sw, sh, 0, 0, tela.width, tela.height);
+          return tela;
+        };
+        let leggi;
         if ('BarcodeDetector' in window) {
           const det = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
-          while (!fermo) {
-            const c = await det.detect(v.current).catch(() => []);
-            if (c[0]?.rawValue) { trovato(c[0].rawValue); break; }
-            await new Promise((r) => setTimeout(r, 120));
-          }
+          leggi = async (tutto) => (await det.detect(tutto ? video : (ritaglia(false) || video)).catch(() => []))[0]?.rawValue || null;
         } else {
           // iPhone (Safari non ha il lettore nativo): ZXing, caricato solo quando serve
           const { BrowserMultiFormatReader } = await import('@zxing/browser');
           const { DecodeHintType, BarcodeFormat } = await import('@zxing/library');
-          const suggerimenti = new Map([[DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E]], [DecodeHintType.TRY_HARDER, true]]);
-          const lettore = new BrowserMultiFormatReader(suggerimenti, { delayBetweenScanAttempts: 80 });
-          // si legge dal video già acceso (decodeFromConstraints aprirebbe e chiuderebbe la fotocamera ogni volta)
-          const ctrl = lettore.scan(v.current, (r) => { if (r) trovato(r.getText()); });
-          ferma = () => ctrl.stop();
-          if (fermo) ferma();
+          const lettore = new BrowserMultiFormatReader(new Map([[DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E]], [DecodeHintType.TRY_HARDER, true]]));
+          leggi = async (tutto) => { const c = ritaglia(tutto); if (!c) return null; try { return lettore.decodeFromCanvas(c).getText(); } catch { return null; } };
+        }
+        // si legge a ripetizione; ogni tanto anche l'immagine intera, se il codice è fuori dal riquadro.
+        // Per sicurezza lo stesso codice deve uscire due volte di fila (una lettura sbagliata non apre un prodotto a caso)
+        let giro = 0; let ultimo = null;
+        while (!fermo) {
+          const c = await leggi(giro % 4 === 3);
+          giro++;
+          if (c && c === ultimo) { trovato(c); break; }
+          ultimo = c || ultimo;
+          await attesa(c ? 30 : 90);
         }
       } catch { setErr('Fotocamera non disponibile (serve https o il permesso): scrivi il codice a mano.'); setAttivo(false); }
     })();
-    return () => { fermo = true; ferma?.(); if (v.current) v.current.srcObject = null; lasciaCamera(); };
+    return () => { fermo = true; if (v.current) v.current.srcObject = null; lasciaCamera(); };
   }, [attivo]); // eslint-disable-line
   if (!disponibile) return <div style={{ gridColumn: '1 / -1' }}>{aMano ? campoManoSemplice(codice, setCodice, manda, () => setAMano(false)) : <button type="button" className={classe} onClick={() => setAMano(true)}>Scrivi il codice a barre</button>}</div>;
   const campoMano = <form className="codice-mano" onSubmit={manda}>
     <label className="campo">Scrivi le cifre sotto il codice a barre<input inputMode="numeric" autoComplete="off" value={codice} onChange={(e) => setCodice(e.target.value)} placeholder="Es. 8001234567890" autoFocus /></label>
     <div className="riga"><button className="b pieno" disabled={codice.replace(/\D/g, '').length < 8}>Cerca il prodotto</button><button type="button" className="link" onClick={() => { setAMano(false); setCodice(''); }}>Annulla</button></div>
   </form>;
-  return <>{attivo ? <><div className="scanner-box"><video ref={v} className="scanner" playsInline muted /><span className="mirino" aria-hidden="true" /></div>
-      <p className="muto piccolo" style={{ gridColumn: '1 / -1' }}>Tieni il codice dritto dentro il riquadro, a 10–15 cm, con buona luce.</p>
+  return <>{attivo ? <><div className="scanner-box"><video ref={v} className="scanner" playsInline muted autoPlay /><span className="mirino" aria-hidden="true" /></div>
+      <p className="muto piccolo" style={{ gridColumn: '1 / -1' }}>Tieni il codice dritto dentro il riquadro, a circa 20 cm (più vicino l'iPhone non mette a fuoco), con buona luce.</p>
       <div className="riga" style={{ gridColumn: '1 / -1' }}><button className="b" onClick={() => setAttivo(false)}>Chiudi la fotocamera</button><button type="button" className="b" onClick={() => { setAttivo(false); setAMano(true); }}>Scrivilo a mano</button></div></>
     : aMano ? <div style={{ gridColumn: '1 / -1' }}>{campoMano}</div>
       : <button className={classe} onClick={() => { setErr(''); setAttivo(true); }}>{etichetta}</button>}{err && <div className="avviso">{err}</div>}</>;
