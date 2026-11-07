@@ -139,6 +139,25 @@ export async function leggiEtichetta(immagini, { modello: m = modelloVolantini()
   return { dati: o, uso: { input, output, euro: Math.round(((input * EURO_IN(m) + output * EURO_OUT(m)) / 1e6) * 10000) / 10000, modello: m } };
 }
 
+// 0.89: le cifre stampate sotto il codice a barre, da una foto (quando il telefono non riesce a leggere le barre)
+export async function leggiCodice(immagine, { modello: m = modelloVolantini() } = {}) {
+  if (!attivo()) return { ean: null, uso: { euro: 0 } };
+  const r = await _fetch(process.env.CLAUDE_URL || 'https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': chiave(), 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: m, max_tokens: 60, messages: [{ role: 'user', content: [
+      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: immagine } },
+      { type: 'text', text: 'Nella foto c\'è un codice a barre di un prodotto (EAN-13 o EAN-8). Scrivi le cifre stampate sotto le barre. Rispondi SOLO con JSON: {"ean": "le cifre senza spazi"} oppure {"ean": null} se non si leggono tutte con sicurezza. Non inventare cifre.' },
+    ] }] }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return { ean: null, uso: { euro: 0 } };
+  const t = (j.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
+  const x = t.match(/"ean"\s*:\s*"(\d{8,14})"/);
+  const input = j.usage?.input_tokens || 0; const output = j.usage?.output_tokens || 0;
+  return { ean: x ? x[1] : null, uso: { euro: Math.round(((input * EURO_IN(m) + output * EURO_OUT(m)) / 1e6) * 10000) / 10000 } };
+}
+
 // 0.57: nome del prodotto in italiano (Open Food Facts a volte lo ha solo in inglese o tedesco, es. «Peanuts roasted & salted»).
 // Modello economico, una riga sola di risposta. Se qualcosa non va, resta il nome di prima.
 export async function nomeItaliano(nome, marca = '') {

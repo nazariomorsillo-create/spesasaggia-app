@@ -78,11 +78,38 @@ function lasciaCamera() {
   clearTimeout(cam.timer); cam.timer = setTimeout(chiudiCamera, 3 * 60 * 1000);
 }
 if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (document.hidden) chiudiCamera(); });
+// 0.89 (Nazario, 07/11): sull'iPhone la fotocamera «dal vivo» fa chiedere il permesso ogni volta. Lì il codice si fotografa con la
+// fotocamera del telefono (nessun permesso da dare) e si legge dalla foto; se le barre non si leggono, il server legge le cifre.
+const SOLO_FOTO = typeof window !== 'undefined' && !('BarcodeDetector' in window);
+async function codiceDaFoto(file) {
+  const img = (window.createImageBitmap ? await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null) : null)
+    || await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = URL.createObjectURL(file); });
+  const { BrowserMultiFormatReader } = await import('@zxing/browser');
+  const { DecodeHintType, BarcodeFormat } = await import('@zxing/library');
+  const lettore = new BrowserMultiFormatReader(new Map([[DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E]], [DecodeHintType.TRY_HARDER, true]]));
+  for (const lato of [1400, 900, 2200]) for (const giro of [0, 90]) {
+    const k = Math.min(1, lato / Math.max(img.width, img.height)); const w = Math.round(img.width * k); const h = Math.round(img.height * k);
+    const c = document.createElement('canvas'); c.width = giro ? h : w; c.height = giro ? w : h; const x = c.getContext('2d');
+    if (giro) { x.translate(h, 0); x.rotate(Math.PI / 2); }
+    x.drawImage(img, 0, 0, w, h);
+    try { return lettore.decodeFromCanvas(c).getText(); } catch { /* si prova un'altra misura */ }
+  }
+  const r = await api('/api/codice-da-foto', { metodo: 'POST', corpo: { dati: await riduciFoto(file, 1600, 0.85) } }).catch(() => null);
+  return r?.ean || null;
+}
 function Scanner({ onCodice, etichetta = '📷 Inquadra il codice a barre', classe = 'b' }) {
   const [attivo, setAttivo] = useState(false); const [err, setErr] = useState(''); const v = useRef(null);
   const [aMano, setAMano] = useState(false); const [codice, setCodice] = useState('');
   const manda = (e) => { e?.preventDefault(); const c = codice.replace(/\D/g, ''); if (c.length < 8 || c.length > 14) { setErr('Il codice a barre ha 8 o 13 cifre: controlla e riprova.'); return; } setErr(''); setAttivo(false); setAMano(false); setCodice(''); onCodice(c); };
   const disponibile = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
+  const foto = useRef(null); const [leggo, setLeggo] = useState(false);
+  const daFoto = async (e) => {
+    const f = e.target.files?.[0]; e.target.value = ''; if (!f) return;
+    setErr(''); setLeggo(true);
+    try { const c = await codiceDaFoto(f); if (c) onCodice(c); else setErr('Non riesco a leggere il codice: rifai la foto più vicina, dritta e con luce, oppure scrivi le cifre.'); }
+    catch { setErr('Non riesco a leggere la foto: riprova o scrivi le cifre.'); }
+    finally { setLeggo(false); }
+  };
   useEffect(() => {
     if (!attivo) return undefined;
     let fermo = false; let ferma = null;
@@ -114,6 +141,16 @@ function Scanner({ onCodice, etichetta = '📷 Inquadra il codice a barre', clas
     })();
     return () => { fermo = true; ferma?.(); if (v.current) v.current.srcObject = null; lasciaCamera(); };
   }, [attivo]); // eslint-disable-line
+  if (SOLO_FOTO) {
+    const campo = <form className="codice-mano" onSubmit={manda}>
+      <label className="campo">Scrivi le cifre sotto il codice a barre<input inputMode="numeric" autoComplete="off" value={codice} onChange={(e) => setCodice(e.target.value)} placeholder="Es. 8001234567890" autoFocus /></label>
+      <div className="riga"><button className="b pieno" disabled={codice.replace(/\D/g, '').length < 8}>Cerca il prodotto</button><button type="button" className="link" onClick={() => { setAMano(false); setCodice(''); }}>Annulla</button></div>
+    </form>;
+    return <>{aMano ? <div style={{ gridColumn: '1 / -1' }}>{campo}</div>
+      : <button type="button" className={classe} disabled={leggo} onClick={() => { setErr(''); foto.current?.click(); }}>{leggo ? <><Icona n="codice" d={34} /><b>Leggo il codice…</b></> : etichetta}</button>}
+      <input ref={foto} type="file" accept="image/*" capture="environment" hidden onChange={daFoto} />
+      {err && <div className="avviso" style={{ gridColumn: '1 / -1' }}>{err} <button type="button" className="link" onClick={() => { setErr(''); setAMano(true); }}>Scrivi le cifre</button></div>}</>;
+  }
   if (!disponibile) return <div style={{ gridColumn: '1 / -1' }}>{aMano ? campoManoSemplice(codice, setCodice, manda, () => setAMano(false)) : <button type="button" className={classe} onClick={() => setAMano(true)}>Scrivi il codice a barre</button>}</div>;
   const campoMano = <form className="codice-mano" onSubmit={manda}>
     <label className="campo">Scrivi le cifre sotto il codice a barre<input inputMode="numeric" autoComplete="off" value={codice} onChange={(e) => setCodice(e.target.value)} placeholder="Es. 8001234567890" autoFocus /></label>

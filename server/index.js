@@ -593,6 +593,21 @@ app.post('/api/etichetta', async (req) => {
   if (!e.letto) throw new Errore('Non riesco a leggere l\'etichetta: fai una foto più vicina e con più luce');
   return { ...e, foto: salvaJpeg(foto[0]) };
 });
+// 0.89: codice a barre fotografato (iPhone: niente permesso della fotocamera): se il telefono non legge le barre, si leggono le cifre
+const codiciOggi = new Map();
+const eanValido = (c) => { if (!/^(\d{8}|\d{12,14})$/.test(c)) return false; const d = c.split('').map(Number); const k = d.pop(); const s = d.reverse().reduce((t, x, i) => t + x * (i % 2 ? 1 : 3), 0); return (10 - (s % 10)) % 10 === k; };
+app.post('/api/codice-da-foto', async (req) => {
+  const chiaveG = `${req.utente.id}|${oggi()}`; const n = codiciOggi.get(chiaveG) || 0;
+  if (n >= 60 && !req.utente.admin) throw new Errore('Per oggi hai fotografato molti codici: scrivilo a mano');
+  const mese = db.prepare("SELECT COALESCE(SUM(costo), 0) e FROM etichette_lette WHERE creata_il >= date('now', 'start of month')").get().e;
+  if (mese >= Number(process.env.CLAUDE_TETTO_ETICHETTE_MESE || 3)) return { ean: null };
+  const b = Buffer.from(String(req.body?.dati || '').replace(/^data:image\/jpeg;base64,/, ''), 'base64');
+  if (b.length < 1000 || b.length > 1_500_000 || b[0] !== 0xFF || b[1] !== 0xD8) throw new Errore('La foto non va bene: rifalla');
+  codiciOggi.set(chiaveG, n + 1); if (codiciOggi.size > 5000) codiciOggi.clear();
+  const r = await claude.leggiCodice(b.toString('base64'));
+  if (r.uso?.euro) db.prepare('INSERT INTO etichette_lette (utente_id, costo) VALUES (?, ?)').run(req.utente.id, r.uso.euro);
+  return { ean: r.ean && eanValido(r.ean) ? r.ean : null };
+});
 // scontrino fotografato da chi fa la spesa: va in coda, chi gestisce i prezzi lo legge e lo carica
 // l'impronta di una foto: la stessa foto mandata due volte si riconosce
 const improntaFoto = (dati) => crypto.createHash('sha256').update(String(dati || '').replace(/^data:image\/jpeg;base64,/, '')).digest('hex');
