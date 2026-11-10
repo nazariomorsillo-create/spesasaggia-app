@@ -128,9 +128,11 @@ function punteggio(nomeDetto, nomeVoce) {
 // 0.81: nomi di categoria («Carni», «Formaggi», «Verdure»): non sono una cosa da comprare. «Carne di manzo» non va dentro «Carni»
 export const CATEGORIE_GENERICHE = new Set(['carni', 'carne', 'formaggi', 'salumi', 'latticini', 'pesce', 'pesci', 'verdure', 'ortaggi', 'frutta', 'bevande', 'bibite', 'dolci', 'snack', 'surgelati', 'condimenti', 'cereali', 'legumi', 'alimenti', 'cibi', 'spezie', 'conserve', 'prodotti', 'cibi a base vegetale', 'alimenti a base vegetale', 'carni e derivati', 'prodotti lattiero-caseari', 'piatti pronti', 'colazione', 'dessert']);
 export const generica = (nome) => CATEGORIE_GENERICHE.has(String(nome || '').trim().toLowerCase());
-export function trovaVoce(nome, voci, prodotti) {
+// 0.95 (Nazario, 10/11): «esatto» = la persona ha scritto proprio quel nome («riso»): vale solo la voce con lo stesso nome,
+// non una più specifica («Riso nerone»). Se non c'è, nasce la voce generica e si sceglie al supermercato.
+export function trovaVoce(nome, voci, prodotti, { esatto = false } = {}) {
   let meglio = null;
-  for (const v of voci) { const p = punteggio(nome, v.nome); if (p && !(p < 100 && generica(v.nome)) && (!meglio || p > meglio.p)) meglio = { v, p }; }
+  for (const v of voci) { const p = punteggio(nome, v.nome); if (p && (!esatto || p === 100) && !(p < 100 && generica(v.nome)) && (!meglio || p > meglio.p)) meglio = { v, p }; }
   if (meglio && meglio.p >= 70) return { voce: meglio.v, marca: 'qualsiasi', p: meglio.p };
   for (const p of prodotti) {
     const v = voci.find((x) => x.id === p.voce_id); if (!v) continue;
@@ -158,7 +160,7 @@ function quantita(voce, n, m, prodotti) {
 export const maiuscola = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // Dal testo dettato alle proposte da confermare
-export function capisci(testo, voci, prodotti) {
+export function capisci(testo, voci, prodotti, { esatto = false } = {}) {
   const capito = []; const pezzi = [];
   for (const pezzo of dividi(testo)) {
     const l = leggiPezzo(pezzo);
@@ -172,7 +174,7 @@ export function capisci(testo, voci, prodotti) {
     } else pezzi.push({ ...l, detto: pezzo });
   }
   for (const l of pezzi) {
-    const t = trovaVoce(l.nome, voci, prodotti);
+    const t = trovaVoce(l.nome, voci, prodotti, { esatto });
     const voce = t?.voce || { id: null, nome: maiuscola(l.nome), ...(indovina(l.nome) || { reparto: 'dispensa', unita: 'pz' }) };
     const { q, circa } = quantita(voce, l.n, l.m, prodotti);
     const passo = voce.unita === 'pz' ? 1 : 0.05;

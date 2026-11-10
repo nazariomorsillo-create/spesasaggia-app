@@ -5336,3 +5336,8 @@ body::before {
   margin: 0;
   font-weight: 700;
 }
+/* 0.95 «Metti in lista «riso»» in cima, ben visibile, quando le voci trovate sono altre cose (Risotto, Riso nerone) */
+.suggeriti li.metti-prima { border: 2px solid var(--azione); border-radius: 14px; background: #fff1e6; margin: 10px; }
+.suggeriti li.metti-prima + li { border-top: 0; }
+.suggeriti li.metti-prima .metti { background: transparent; }
+.suggeriti li.metti-prima .testo > span:not(.bolla-libera) { color: var(--inchiostro); }

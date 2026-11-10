@@ -319,8 +319,9 @@ function RigaLista({ r, fai, spunta, togli }) {
 const OPZIONI = [['scelta', 'Miglior scelta'], ['migliore', 'Il migliore'], ['economico', 'Più economico'], ['italiano', 'Italiano più economico'], ['bio', 'Bio più economico'], ['preferito', 'Il mio preferito']];
 const QUALITA_DI = { economico: 'qualsiasi', italiano: 'italiano', bio: 'bio' };
 // Mette in lista partendo dal testo (come la voce): quantità sensata e voce nuova se serve
-async function perTesto(testo, extra = {}) {
-  const r = await api('/api/lista/voce', { metodo: 'POST', corpo: { testo } });
+// esatto (0.95): scritto a mano o toccato «Metti in lista «riso»»: vale solo la voce con quel nome, altrimenti ne nasce una generica
+async function perTesto(testo, extra = {}, esatto = false) {
+  const r = await api('/api/lista/voce', { metodo: 'POST', corpo: { testo, esatto } });
   if (!r.capito.length) throw new Error(`Non ho capito cosa mettere in lista con «${testo}»`);
   const l = await api('/api/lista/voce/conferma', { metodo: 'POST', corpo: { righe: r.capito.map((c) => ({ ...c, ...extra })) } });
   l.capito = r.capito.map((c) => c.nome); // 0.81: per dire «era già in lista» se non nasce una riga nuova
@@ -404,12 +405,22 @@ function Ricerca({ onAggiungi, onAvviso, onModulo, inMezzo = null }) {
   if (scansione && !scansione.proposta) return <NuovoVeloce ean={scansione.ean} avviso={scansione.avviso} onFatto={(p, info) => { setScansione(null); location.hash = info?.manca ? `#prodotto/${p.id}/manca` : info?.conPrezzo ? `#prodotto/${p.id}` : `#prodotto/${p.id}/prezzo`; }} onAnnulla={() => setScansione(null)} />;
   if (scansione) return <NuovoDaCodice s={scansione} voci={voci} onFatto={(p, info) => { setScansione(null); location.hash = info?.conPrezzo ? `#prodotto/${p.id}` : `#prodotto/${p.id}/prezzo`; }} onAnnulla={() => setScansione(null)} />;
   const esatta = sug?.some((x) => x.tipo === 'voce' && x.nome.toLowerCase() === q.trim().toLowerCase());
+  // 0.95 (Nazario, 10/11): «riso» trovava solo «Risotto» e «Riso nerone», e «Metti in lista «riso»» spariva. Ora c'è sempre
+  // (se non esiste già una voce con quel nome) e sta in cima quando le voci trovate non cominciano con la parola scritta
+  const primaParola = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter(Boolean)[0] || '';
+  // in cima se una voce ha proprio quella parola ma dice di più («Riso nerone») o se nessuna comincia così; in fondo mentre
+  // si sta ancora scrivendo («zucch» → «Zucchine»)
+  const stessaParola = sug?.some((x) => x.tipo === 'voce' && primaParola(x.nome) === primaParola(q));
+  const inizia = sug?.some((x) => x.tipo === 'voce' && primaParola(x.nome).startsWith(primaParola(q)));
+  const copre = !stessaParola && inizia;
+  const mettiGenerico = !esatta && q.trim().length >= 2 && <li className={copre ? '' : 'metti-prima'}><button type="button" className="metti" onClick={() => fatto(() => perTesto(q.trim(), {}, true))}><span className="testo"><span className="bolla-libera">Scegli al supermercato</span><b>Metti in lista «{q.trim()}»</b><span>{copre ? 'e scegli dopo quale prendere' : 'proprio questo, non quelli qui sotto: lo scegli al supermercato'}</span></span><span className="piu" aria-hidden="true">+</span></button></li>;
   return <div className="colonna">
-    <form className="cerca" ref={casella} onSubmit={(e) => { e.preventDefault(); if (q.trim()) fatto(() => perTesto(q.trim())); }}>
+    <form className="cerca" ref={casella} onSubmit={(e) => { e.preventDefault(); if (q.trim()) fatto(() => perTesto(q.trim(), {}, true)); }}>
       <label className="campo-cerca cerca-grande"><Icona n="cerca" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Scrivi cosa ti serve: latte, pane…" aria-label="Scrivi cosa ti serve" autoComplete="off" enterKeyHint="search" />
         {q && <button type="button" className="cancella" aria-label="Cancella" onClick={pulisci}><Icona n="chiudi" d={22} /></button>}</label>
     </form>
     {q.trim().length >= 2 && <ul className="suggeriti" aria-label="Prodotti trovati">
+      {sug && !copre && mettiGenerico}
       {(sug || []).map((x, n) => <li key={`${x.tipo}-${x.prodotto_id || x.voce_id || x.ean}-${n}`} className={x.prodotto_id ? 'sug-prodotto' : x.tipo === 'voce' ? 'sug-voce' : ''}>{x.prodotto_id ? <RigaSuggerita x={x} attesa={attesa} prendi={prendi} /> : <button type="button" disabled={attesa} onClick={() => prendi(x)}>
         {x.foto ? <img src={x.foto} alt="" loading="lazy" /> : <span className="segno" aria-hidden="true">{x.tipo === 'voce' ? <Icona n="lista" d={24} /> : <Icona n="negozio" d={24} />}</span>}
         {/* 0.72: la riga generica («Mandarini, qualsiasi») è sempre ben staccata, per chi non vuole scegliere il prodotto adesso */}
@@ -419,7 +430,7 @@ function Ricerca({ onAggiungi, onAvviso, onModulo, inMezzo = null }) {
       </button>}</li>)}
       {sug && !sug.length && <li className="muto nessuno">Nessun prodotto con queste parole: toglierne una aiuta.</li>}
       {sug?.some((x) => x.prodotto_id) && <li className="come-scegliamo"><a href="#come-scegliamo">Come ordiniamo i risultati e scegliamo la Scelta saggia</a></li>}
-      {!esatta && !sug?.some((x) => x.tipo === 'voce') && <li><button type="button" className="metti" onClick={() => fatto(() => perTesto(q.trim()))}><span className="testo"><b>Metti in lista «{q.trim()}»</b><span>e scegli dopo quale prendere</span></span><span className="piu" aria-hidden="true">+</span></button></li>}
+      {sug && copre && mettiGenerico}
     </ul>}
     {quanti && <QuantoServe x={quanti} attesa={attesa} onConferma={(n) => prendi({ ...quanti, quantitaScelta: n })} onAnnulla={() => setQuanti(null)} />}
     {err && <div className="errore">{err}</div>}

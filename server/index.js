@@ -1402,7 +1402,7 @@ app.delete('/api/lista', async (req) => { db.prepare(req.query.presi ? 'DELETE F
 app.post('/api/lista/voce', async (req) => {
   const t = testo(req.body?.testo, 1000); if (!t) throw new Errore('Non ho sentito niente: tocca il microfono e parla');
   const voci = db.prepare('SELECT * FROM voci').all(); const prodotti = db.prepare('SELECT id, voce_id, nome, marca, quantita, sfuso FROM prodotti').all();
-  const capito = capisci(t, voci, prodotti).map((c) => {
+  const capito = capisci(t, voci, prodotti, { esatto: req.body?.esatto === true }).map((c) => {
     if (!c.voce_id) {
       // nome mai sentito: forse è un prodotto preciso del catalogo ("pan di stelle", "nutella").
       // 0.78: solo se non è una cosa comune che l'app riconosce (zucca, petto di pollo: si crea la voce generica),
