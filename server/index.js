@@ -487,12 +487,17 @@ app.post('/api/prodotti/:id/unisci', async (req) => {
   // resta la scheda con più prezzi (di solito quella degli scontrini, che sa riconoscere le righe), a parità la più vecchia
   const nPrezzi = (x) => db.prepare('SELECT COUNT(*) n FROM prezzi WHERE prodotto_id = ?').get(x).n;
   if (nPrezzi(a.id) > nPrezzi(p.id) || (nPrezzi(a.id) === nPrezzi(p.id) && a.id < p.id)) [p, a] = [a, p];
-  if (p.ean && a.ean && p.ean !== a.ean) throw new Errore('Hanno due codici a barre diversi: sono prodotti diversi');
+  // 0.97: due codici a barre diversi (confezione promozionale, lotto nuovo): chi gestisce può unire lo stesso, il secondo codice resta
+  // come «alias» e la scansione continua a trovare la scheda; per gli altri restano prodotti diversi
+  const dueCodici = p.ean && a.ean && p.ean !== a.ean;
+  if (dueCodici && !req.utente.admin) throw new Errore('Hanno due codici a barre diversi: sono prodotti diversi');
   db.transaction(() => {
     const ean = a.ean; if (ean) db.prepare("UPDATE prodotti SET ean = '' WHERE id = ?").run(a.id);
+    if (dueCodici) db.prepare('INSERT OR REPLACE INTO codici_alias (ean, prodotto_id) VALUES (?, ?)').run(ean, p.id);
+    db.prepare('UPDATE codici_alias SET prodotto_id = ? WHERE prodotto_id = ?').run(p.id, a.id);
     const campi = ['marca', 'origine', 'descrizione', 'ingredienti', 'produttore', 'provenienza', 'foto', 'nutriscore', 'additivi', 'nome_scontrino', 'valori', 'imballaggio', 'note'];
     const nuovo = {}; for (const k of campi) if ((p[k] == null || p[k] === '') && a[k] != null && a[k] !== '') nuovo[k] = a[k];
-    if (!p.ean && ean) nuovo.ean = ean; if (!p.nova && a.nova) nuovo.nova = a.nova; if (!p.bio && a.bio) nuovo.bio = 1;
+    if (!p.ean && ean && !dueCodici) nuovo.ean = ean; if (!p.nova && a.nova) nuovo.nova = a.nova; if (!p.bio && a.bio) nuovo.bio = 1;
     if (!p.sfuso && !(p.quantita > 0) && a.quantita > 0 && !a.sfuso) { nuovo.quantita = a.quantita; if (a.pezzi) nuovo.pezzi = a.pezzi; }
     if (p.tipo === 'senza' && a.tipo !== 'senza') { nuovo.tipo = a.tipo; if (a.catena_id) nuovo.catena_id = a.catena_id; }
     const k = Object.keys(nuovo); if (k.length) db.prepare(`UPDATE prodotti SET ${k.map((x) => `${x} = @${x}`).join(', ')} WHERE id = @id`).run({ ...nuovo, id: p.id });

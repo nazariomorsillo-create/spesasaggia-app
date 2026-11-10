@@ -6,7 +6,10 @@ import { radici } from './voce.js';
 export const eanNorm = (e) => String(e || '').replace(/\D/g, '').replace(/^0+/, '');
 export function perEan(db, ean) {
   const n = eanNorm(ean); if (n.length < 7) return null;
-  return db.prepare("SELECT id FROM prodotti WHERE ean != '' AND ltrim(ean, '0') = ? ORDER BY id LIMIT 1").get(n)?.id ?? null;
+  const diretto = db.prepare("SELECT id FROM prodotti WHERE ean != '' AND ltrim(ean, '0') = ? ORDER BY id LIMIT 1").get(n)?.id;
+  if (diretto) return diretto;
+  // 0.97: secondo codice di una scheda unita (codici_alias), se la scheda esiste ancora
+  return db.prepare("SELECT a.prodotto_id FROM codici_alias a JOIN prodotti p ON p.id = a.prodotto_id WHERE ltrim(a.ean, '0') = ? LIMIT 1").get(n)?.prodotto_id ?? null;
 }
 
 export const parole = (s) => radici(String(s).replace(/\S*\d\S*/g, ' ')).filter((x) => x.length >= 3);

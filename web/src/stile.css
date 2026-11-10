@@ -5343,3 +5343,6 @@ body::before {
 .suggeriti li.metti-prima + li { border-top: 0; }
 .suggeriti li.metti-prima .metti { background: transparent; }
 .suggeriti li.metti-prima .testo > span:not(.bolla-libera) { color: var(--inchiostro); }
+/* 0.97 unire i doppioni dalla pagina dei prezzi */
+.unisci-link { align-self: flex-start; font-size: 16px; }
+.unisci-qui .doppione { background: #fff; border-radius: 12px; padding: 10px; }

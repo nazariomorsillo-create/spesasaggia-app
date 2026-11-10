@@ -25,6 +25,9 @@ const stessiIngredienti = (A, B) => { if (A.size < 2 || B.size < 2) return 0; le
 
 export function prepara(db) {
   db.exec('CREATE TABLE IF NOT EXISTS non_uguali (a INTEGER NOT NULL, b INTEGER NOT NULL, utente_id INTEGER, creato_il TEXT NOT NULL DEFAULT (datetime(\'now\')), PRIMARY KEY (a, b))');
+  // 0.97: lo stesso prodotto può avere più codici a barre (confezione promozionale, lotto nuovo): quando si uniscono due schede
+  // con codici diversi, il secondo codice resta qui e la scansione lo riconosce lo stesso
+  db.exec('CREATE TABLE IF NOT EXISTS codici_alias (ean TEXT PRIMARY KEY, prodotto_id INTEGER NOT NULL, creato_il TEXT NOT NULL DEFAULT (datetime(\'now\')))');
 }
 export const segnaDiversi = (db, x, y, utente_id = null) => db.prepare('INSERT OR IGNORE INTO non_uguali (a, b, utente_id) VALUES (?, ?, ?)').run(Math.min(x, y), Math.max(x, y), utente_id);
 

@@ -504,10 +504,37 @@ function Confronto({ id, stato }) {
           <a className="b piccolo contorno" href={`#prodotto/${p.id}/prezzo`}>Aggiungi un prezzo</a>
           <button type="button" className="b piccolo" onClick={() => setModifica(modifica?.id === p.id ? null : p)}>Modifica la scheda</button>
         </div>
+        {/* 0.97 (Nazario, 10/11): due schede dello stesso prodotto si uniscono da qui, dove si vedono una sotto l'altra (chi gestisce) */}
+        {stato?.utente?.admin && prodotti.length > 1 && <UnisciQui p={p} altri={prodotti.filter((x) => x.id !== p.id)} voce={voce} onFatto={() => c.ricarica()} />}
         {modifica?.id === p.id && <section className="carta"><h2>Modifica la scheda</h2><FormProdotto iniziale={{ ...modifica, voce: voce.nome, unita: voce.unita, reparto: voce.reparto }} voci={voci} catene={catene.dati} onSalvato={() => { setModifica(null); c.ricarica(); }} onAnnulla={() => setModifica(null)} /></section>}
       </div>)}
     </section>
   </>;
+}
+// 0.97: «È un doppione?» nella pagina dei prezzi: si sceglie l'altra scheda della stessa voce e si conferma. Niente si cancella:
+// prezzi, foto, voti e codici a barre passano tutti sulla scheda che resta (quella con più prezzi).
+function UnisciQui({ p, altri, voce, onFatto }) {
+  const [apri, setApri] = useState(false); const [conferma, setConferma] = useState(null); const [err, setErr] = useState(''); const [attesa, setAttesa] = useState(false);
+  const formato = (x) => (x.sfuso ? 'sfuso' : x.quantita > 0 ? quanto(x.quantita, voce.unita, false, voce.pezzo) : 'formato da completare');
+  const unisci = async (x) => {
+    setErr(''); setAttesa(true);
+    try { await api(`/api/prodotti/${p.id}/unisci`, { metodo: 'POST', corpo: { altro: x.id } }); setApri(false); setConferma(null); onFatto(); } catch (e) { setErr(e.message); } finally { setAttesa(false); }
+  };
+  if (!apri) return <button type="button" className="link unisci-link" onClick={() => setApri(true)}>È un doppione di un'altra scheda? Uniscile</button>;
+  return <div className="avviso colonna unisci-qui">
+    <b>Con quale scheda è lo stesso prodotto?</b>
+    <span className="muto piccolo">Resta una scheda sola, con tutti i prezzi, le foto, i voti e i codici a barre di tutte e due. Non si cancella niente.</span>
+    {altri.map((x) => <div key={x.id} className="doppione">
+      {x.foto ? <img src={x.foto} alt="" loading="lazy" /> : <span className="senza-foto"><Icona n="foto" d={26} /></span>}
+      <div className="doppione-testo"><b>{x.nome}</b>
+        <span className="muto piccolo">{formato(x)}{x.ean ? ` · codice ${x.ean}` : ' · senza codice a barre'}</span>
+        <span className="etichette">{x.prezzi.slice(0, 3).map((z) => <span key={z.id} className="pill super-lista">{z.catena} · {euro(z.prezzo)}</span>)}{!x.prezzi.length && <span className="muto piccolo">nessun prezzo</span>}</span></div>
+      {conferma === x.id ? <div className="colonna"><button type="button" className="b pieno-verde" disabled={attesa} onClick={() => unisci(x)}>{attesa ? 'Unisco…' : 'Sì, uniscile'}</button><button type="button" className="b" onClick={() => setConferma(null)}>Annulla</button></div>
+        : <button type="button" className="b" onClick={() => setConferma(x.id)}>È lo stesso</button>}
+    </div>)}
+    {err && <div className="errore">{err}</div>}
+    <button type="button" className="link" onClick={() => { setApri(false); setConferma(null); }}>Chiudi</button>
+  </div>;
 }
 // 0.72: una riga di prezzo da correggere sul posto: tocchi «Correggi», scrivi il prezzo, salvi (un solo prezzo per supermercato, quello giusto)
 function RigaPrezzoTab({ x, unita, senzaFormato = false, onFatto }) {

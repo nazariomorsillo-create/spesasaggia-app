@@ -24,6 +24,7 @@ db.transaction(() => {
     db.prepare('DELETE FROM preferiti WHERE prodotto_id = ?').run(p.id);
     db.prepare('DELETE FROM valutazioni WHERE prodotto_id = ?').run(p.id);
     db.prepare('DELETE FROM prezzi WHERE prodotto_id = ?').run(p.id);
+    db.prepare('DELETE FROM codici_alias WHERE prodotto_id = ?').run(p.id);
     db.prepare('DELETE FROM prodotti WHERE id = ?').run(p.id);
   }
   db.prepare('DELETE FROM righe_lista WHERE voce_id = ?').run(v.id);

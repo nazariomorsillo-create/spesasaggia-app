@@ -87,7 +87,6 @@ export function Scheda({ id, chiedi }) {
         {p.perche.parti.filter((x) => x.max === 0).map((x) => <p key={x.cosa} className="muto piccolo">{x.cosa}: {x.testo}.</p>)}
         <p className="muto piccolo">Il voto è la percentuale dei punti presi su quelli che si possono dare con i dati che conosciamo{p.perche.bonus.length ? ', più o meno i punti qui sopra' : ''}.</p>
       </details>}
-      {p.puoUnire && <UnisciCerca key={p.id} p={p} onUnito={unito} />}
       <dl className="dati">
         {!p.non_alimentare && <><div><dt>Valori nutrizionali</dt><dd>{p.nutriscore ? <><span className={`nutri n${p.nutriscore}`}>{p.nutriscore.toUpperCase()}</span> Nutri-Score</> : <span className="muto">Non si sa</span>}</dd></div>
         {p.valori && (() => { // valori nutrizionali letti dall'etichetta, per 100 g o 100 ml
@@ -121,6 +120,8 @@ export function Scheda({ id, chiedi }) {
     <div className="colonna">
       <button type="button" className="b" onClick={() => { setModifica(true); suCima(); }}>Modifica la scheda</button>
       {p.ean && <button type="button" className="b" onClick={() => azione(() => api(`/api/prodotti/${p.id}/off`, { metodo: 'POST' }), 'Scheda completata con i dati di Open Food Facts')}>Completa con Open Food Facts</button>}
+      {/* 0.97: unire a mano sta qui tra le azioni (prima era nascosto a metà pagina) */}
+      {p.puoUnire && <UnisciCerca key={p.id} p={p} onUnito={unito} />}
       {p.non_alimentare ? <p className="muto piccolo">Per i prodotti per la casa e l'igiene il giudizio viene dai voti di chi li usa: più voti ci sono, più è affidabile.</p> : <p className="muto piccolo">Il giudizio mette insieme Nutri-Score, additivi, lavorazione, bio, origine e i voti di chi l'ha comprato. Gli additivi sono valutati sui pareri pubblici dell'EFSA, della IARC e sulle regole UE dell'etichetta: è un'indicazione, non un parere medico.{p.ean ? ` Codice a barre ${p.ean}.` : ''}</p>}
     </div>
   </>;
