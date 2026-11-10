@@ -5060,7 +5060,9 @@ a.b.pieno-verde {
 .suggeriti li.sug-voce + li { border-top: 0; }
 .suggeriti li.sug-voce .segno { background: #fff; color: var(--azione-scura); }
 .suggeriti li.sug-voce .testo > span { color: var(--inchiostro); }
-.suggeriti .bolla-libera { align-self: flex-start; background: var(--azione); color: #fff; border-radius: 999px; padding: 2px 10px; margin-bottom: 4px; font-size: 14px; font-weight: 700; white-space: nowrap; }
+.suggeriti .bolla-libera { align-self: flex-start; border-radius: 999px; padding: 2px 10px; margin-bottom: 4px; font-size: 14px; font-weight: 700; white-space: nowrap; }
+/* 0.96 (Nazario, 10/11): «Scegli al supermercato» verde ovunque (ricerca, lista, giro): arancione su arancione non si vedeva */
+.bolla-libera, .pill.bolla-libera, .suggeriti .bolla-libera, .suggeriti .testo > .bolla-libera, .suggeriti li.sug-voce .testo > .bolla-libera { background: var(--verde-scuro); color: #fff; }
 
 /* 0.72 — lista sul telefono: casella e foto in una colonna stretta a sinistra, testo largo, prezzo su una riga sua */
 @media (max-width: 640px) {

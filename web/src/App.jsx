@@ -272,7 +272,7 @@ function RigaLista({ r, fai, spunta, togli }) {
   else if (r.scelto && r.libera) sotto = `${quanto(r.quantita, r.unita, false, r.pezzo)}, lo scegli tu al supermercato${r.dove_libera === 'dove capita' ? ', dove capita' : r.dove_libera ? ` da ${r.dove_libera}` : ': tocca per dire in quale'}`;
   else if (r.scelto) sotto = `decido io: il più conveniente${tipo ? ` (${tipo})` : ''}`;
   else sotto = `${quanto(r.quantita, r.unita, false, r.pezzo)}${tipo ? `, ${tipo}` : ''}`;
-  const testa = <span className="voce-nome"><b>{nome}</b>{conProdotto ? <Semaforo q={r.voto_prodotto} piccolo sempre /> : null}{conProdotto && sup?.catena ? <span className="pill super-lista">{sup.catena}</span> : null}{conProdotto && sup?.scelto_qui && sup.offerta ? <span className="pill offerta">offerta</span> : null}</span>;
+  const testa = <span className="voce-nome"><b>{nome}</b>{!r.preso && r.scelto && r.libera ? <span className="pill bolla-libera">Scegli al supermercato</span> : null}{conProdotto ? <Semaforo q={r.voto_prodotto} piccolo sempre /> : null}{conProdotto && sup?.catena ? <span className="pill super-lista">{sup.catena}</span> : null}{conProdotto && sup?.scelto_qui && sup.offerta ? <span className="pill offerta">offerta</span> : null}</span>;
   // un'offerta che conviene altrove; se non c'è, un prodotto migliore allo stesso prezzo (mai tutti e due)
   const altrove = r.preso ? null : r.altrove;
   const migliore = !r.preso && !altrove ? r.migliore : null;
