@@ -59,7 +59,7 @@ const COLONNE = {
   produttori: [['canone', 'REAL NOT NULL DEFAULT 0'], ['pagato_fino', "TEXT NOT NULL DEFAULT ''"], ['inizio', "TEXT NOT NULL DEFAULT ''"], ['canone_auto', 'INTEGER NOT NULL DEFAULT 1']],
   // 0.46: impronta della foto (la stessa foto non entra due volte); lo scontrino caricato sa da quale foto viene
   scontrini_foto: [['lettura', 'TEXT'], ['impronta', 'TEXT']],
-  volantini: [['impronta', 'TEXT'], ['phash', 'TEXT'], ['caricate', 'INTEGER'], ['dubbie', 'INTEGER'], ['dal', 'TEXT'], ['al', 'TEXT'], ['nota', 'TEXT']],
+  volantini: [['impronta', 'TEXT'], ['phash', 'TEXT'], ['caricate', 'INTEGER'], ['dubbie', 'INTEGER'], ['dal', 'TEXT'], ['al', 'TEXT'], ['nota', 'TEXT'], ['raccolta_id', 'INTEGER']],
   scontrini: [['foto_id', 'INTEGER']],
   utenti: [['produttore_id', 'INTEGER'], ['installata', 'INTEGER NOT NULL DEFAULT 0']],
   // 0.41: catena_id = la riga va presa in quel supermercato (offerta scelta dalla lista); offerta_nascosta = «non mi interessa»

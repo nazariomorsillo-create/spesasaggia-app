@@ -7,6 +7,7 @@ WS Solution SRL · versione 0.22.0 (01/11/2026)
 ## Novità della 0.47 — volantini a costo quasi zero
 
 - I volantini si leggono con Claude Haiku 5.5 (0,10 $ / 0,50 $ per milione di token, contro 2 $ / 10 $ di Sonnet 5.5): circa 20 volte meno, pochi decimi di centesimo a pagina. Il modello si cambia con CLAUDE_MODELLO_VOLANTINI; per una pagina difficile c'è «Rileggi con il modello più preciso» (CLAUDE_MODELLO, Sonnet).
+- 0.98: i volantini sono raccolte di pagine (una per supermercato e periodo): si sceglie il supermercato una volta, le date valgono per tutto il volantino, si riprende da dove si era, chi gestisce controlla tutte le righe dubbie in una volta. Avvisi WhatsApp per le offerte spenti (AVVISI_OFFERTE_WHATSAPP=1 per riaccenderli).
 - Le pagine si leggono da sole appena arrivano (VOLANTINI_AUTOMATICI=0 per spegnere), finché la spesa del mese resta sotto CLAUDE_TETTO_MESE (5 € predefiniti). Le offerte entrano solo dopo il controllo di chi gestisce.
 - Stima dei costi corretta con il listino per modello (prima usava 3 $ / 15 $, più alto del vero).
 - Indirizzi di file che non esistono (/.env, /data/…, /server/…) ora rispondono 404 invece della pagina dell'app; controllo-sicurezza.sh distingue la pagina dell'app da un file vero e mostra le porte aperte verso l'esterno.

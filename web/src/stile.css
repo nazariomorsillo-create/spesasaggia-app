@@ -5346,3 +5346,16 @@ body::before {
 /* 0.97 unire i doppioni dalla pagina dei prezzi */
 .unisci-link { align-self: flex-start; font-size: 16px; }
 .unisci-qui .doppione { background: #fff; border-radius: 12px; padding: 10px; }
+/* 0.98 volantini per raccolta: elenco «in corso», numero sulle pagine, gruppi per pagina nel controllo */
+.elenco-raccolte { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.elenco-raccolte li { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--foglio); border-radius: 14px; padding: 12px 14px; box-shadow: 0 0 0 1.5px var(--bordo-carta); }
+.elenco-raccolte li.chiusa { opacity: .75; }
+.elenco-raccolte .b { flex: none; }
+.in-corso h2 { margin-bottom: 2px; }
+.pagine-gia li { position: relative; }
+.pagine-gia li.spenta { opacity: .45; }
+.numero-pagina { position: absolute; top: 4px; left: 4px; z-index: 1; background: var(--inchiostro); color: #fff; border-radius: 999px; min-width: 24px; height: 24px; padding: 0 7px; font-size: 14px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+.date-volantino { margin: 0; font-size: 17px; }
+.raccolta .chiusura { gap: 10px; }
+.gruppo-pagina { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 2px solid var(--linea); }
+.gruppo-pagina .mini img { width: 44px; height: 58px; object-fit: cover; border-radius: 6px; border: 1px solid var(--linea); }

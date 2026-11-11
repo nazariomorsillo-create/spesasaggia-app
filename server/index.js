@@ -1463,7 +1463,9 @@ async function avvisaOfferta(p, c, prezzo) {
   for (const [fid, testo] of famiglie) {
     if (db.prepare("SELECT 1 FROM avvisi WHERE famiglia_id = ? AND link = ? AND creato_il > datetime('now', '-1 day')").get(fid, `#prodotto/${p.id}`)) continue;
     db.prepare('INSERT INTO avvisi (famiglia_id, testo, link) VALUES (?, ?, ?)').run(fid, testo, `#prodotto/${p.id}`);
-    if (process.env.WHATSAPP_SERVIZIO) for (const u of db.prepare('SELECT telefono FROM utenti WHERE famiglia_id = ?').all(fid)) await inviaWhatsapp(u.telefono, `${testo} Apri spesasaggia.it per vederlo.`);
+    // 0.98 (Nazario, 11/11): niente WhatsApp per le offerte (arrivavano a raffica a ogni volantino); resta l'avviso dentro l'app.
+    // Si riaccende con AVVISI_OFFERTE_WHATSAPP=1 nel .env
+    if (process.env.WHATSAPP_SERVIZIO && process.env.AVVISI_OFFERTE_WHATSAPP === '1') for (const u of db.prepare('SELECT telefono FROM utenti WHERE famiglia_id = ?').all(fid)) await inviaWhatsapp(u.telefono, `${testo} Apri spesasaggia.it per vederlo.`);
   }
 }
 const euroTesto = (n) => `${Number(n).toFixed(2).replace('.', ',')} €`;

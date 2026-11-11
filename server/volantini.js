@@ -43,6 +43,108 @@ export function volantini(app, db, { Errore, id, testo, numero, imp, oggi, salva
     return cat.find((c) => c.nome.toLowerCase() === n) || cat.find((c) => n.includes(c.nome.toLowerCase()) || c.nome.toLowerCase().includes(n)) || null;
   };
 
+  // ---------- 0.98 (Nazario, 11/11): il VOLANTINO come insieme di pagine («raccolta»), non più pagine sciolte ----------
+  // Si sceglie il supermercato una volta; ogni foto entra nel volantino in corso di quel supermercato, numerata. Le date
+  // (dal–al) valgono per tutto il volantino: lette dalla copertina o scritte una volta. Se si fa una pausa, si riprende da dove
+  // si era: la pagina «Fotografa un volantino» mostra i volantini in corso. «Ho finito» lo chiude; dopo 10 giorni si chiude da solo.
+  db.exec(`CREATE TABLE IF NOT EXISTS raccolte_volantini (id INTEGER PRIMARY KEY, catena_id INTEGER NOT NULL, utente_id INTEGER, dal TEXT, al TEXT,
+    creata_il TEXT NOT NULL DEFAULT (datetime('now')), chiusa_il TEXT)`);
+  const raccolta = (rid) => db.prepare('SELECT r.*, c.nome catena FROM raccolte_volantini r JOIN catene c ON c.id = r.catena_id WHERE r.id = ?').get(rid);
+  const raccoltaAperta = (cid) => db.prepare(`SELECT r.*, c.nome catena FROM raccolte_volantini r JOIN catene c ON c.id = r.catena_id
+    WHERE r.catena_id = ? AND r.chiusa_il IS NULL AND r.creata_il >= datetime('now', '-10 days') AND (r.al IS NULL OR r.al >= ?) ORDER BY r.id DESC LIMIT 1`).get(cid, oggi());
+  const apriRaccolta = (cid, utenteId, nuova = false) => {
+    const c = db.prepare('SELECT id FROM catene WHERE id = ?').get(cid); if (!c) throw new Errore('Supermercato non trovato', 404);
+    const aperta = raccoltaAperta(cid);
+    if (aperta && !nuova) return aperta;
+    if (aperta) db.prepare("UPDATE raccolte_volantini SET chiusa_il = datetime('now') WHERE id = ?").run(aperta.id);
+    return raccolta(db.prepare('INSERT INTO raccolte_volantini (catena_id, utente_id) VALUES (?, ?)').run(cid, utenteId).lastInsertRowid);
+  };
+  const pagineRaccolta = (rid, conLettura = false) => db.prepare(`SELECT v.id, v.foto, v.stato, v.caricate, v.dubbie, v.nota, v.creato_il, v.dal, v.al, u.nome utente${conLettura ? ', v.lettura' : ''}
+    FROM volantini v LEFT JOIN utenti u ON u.id = v.utente_id WHERE v.raccolta_id = ? ORDER BY v.id`).all(rid)
+    .map((v, i) => ({ ...v, numero: i + 1, ...(conLettura ? { lettura: v.lettura ? JSON.parse(v.lettura) : null } : {}) }));
+  // il riassunto che vede chi fotografa: quante pagine, quante lette, quante offerte entrate, quante righe da controllare
+  const riepilogo = (r, pagine = pagineRaccolta(r.id)) => {
+    const vive = pagine.filter((p) => p.stato !== 'scartato');
+    const conta = (st) => vive.filter((p) => p.stato === st).length;
+    return { ...r, pagine: pagine.length, inLettura: conta('da leggere'), daControllare: conta('da controllare'), caricate: vive.reduce((t, p) => t + (p.caricate || 0), 0),
+      dubbie: vive.reduce((t, p) => t + (p.stato === 'da controllare' ? p.dubbie || 0 : 0), 0), doppioni: conta('doppione'), scartate: pagine.length - vive.length, ultima: pagine.at(-1)?.creato_il || r.creata_il };
+  };
+  const raccolteRecenti = (giorni = 30) => db.prepare(`SELECT r.*, c.nome catena FROM raccolte_volantini r JOIN catene c ON c.id = r.catena_id WHERE r.creata_il >= datetime('now', ?) ORDER BY r.chiusa_il IS NULL DESC, r.id DESC`).all(`-${giorni} days`);
+  app.get('/api/raccolte', async (req) => {
+    const tutte = raccolteRecenti(req.query.tutte ? 60 : 12).filter((r) => req.query.tutte || !r.chiusa_il);
+    return tutte.map((r) => riepilogo(r));
+  });
+  app.post('/api/raccolte', async (req) => riepilogo(apriRaccolta(id(req.body?.catena_id), req.utente.id, req.body?.nuova === true)));
+  app.get('/api/raccolte/:id', async (req) => {
+    const r = raccolta(id(req.params.id)); if (!r) throw new Errore('Volantino non trovato', 404);
+    const pagine = pagineRaccolta(r.id, !!req.utente.admin);
+    return { ...riepilogo(r, pagine), elenco: pagine };
+  });
+  // date del volantino (valgono per tutte le pagine) e chiusura. Con le date nuove, le pagine ferme per «manca la data» si rifanno da sole
+  app.put('/api/raccolte/:id', async (req) => {
+    const r = raccolta(id(req.params.id)); if (!r) throw new Errore('Volantino non trovato', 404);
+    const b = req.body || {};
+    if (b.dal !== undefined || b.al !== undefined) {
+      const dal = DATA.test(b.dal || '') ? b.dal : r.dal; const al = DATA.test(b.al || '') ? b.al : null;
+      if (al && dal && al < dal) throw new Errore('La data di fine viene prima di quella di inizio');
+      db.prepare('UPDATE raccolte_volantini SET dal = ?, al = ? WHERE id = ?').run(dal, al, r.id);
+      if (al) rielaboraFerme(r.id);
+    }
+    if (b.chiusa === true) db.prepare("UPDATE raccolte_volantini SET chiusa_il = datetime('now') WHERE id = ?").run(r.id);
+    if (b.chiusa === false) db.prepare('UPDATE raccolte_volantini SET chiusa_il = NULL WHERE id = ?').run(r.id);
+    return riepilogo(raccolta(r.id));
+  });
+  // le pagine del volantino già lette ma ferme (da controllare o in attesa) si rielaborano con le date e il supermercato del volantino
+  function rielaboraFerme(rid) {
+    for (const v of db.prepare("SELECT id FROM volantini WHERE raccolta_id = ? AND lettura IS NOT NULL AND stato IN ('da controllare', 'da leggere')").all(rid)) {
+      try { elabora(v.id); } catch (e) { console.error('volantino (rielaborazione)', v.id, e.message); }
+    }
+  }
+  // chi gestisce carica in un colpo solo le righe controllate di tutte le pagine del volantino
+  app.post('/api/raccolte/:id/carica', async (req) => {
+    if (!req.utente.admin) throw new Errore('Questa parte è riservata a chi gestisce i prezzi', 403);
+    const r = raccolta(id(req.params.id)); if (!r) throw new Errore('Volantino non trovato', 404);
+    const b = req.body || {};
+    const dal = DATA.test(b.valido_dal || '') ? b.valido_dal : r.dal || oggi(); const al = DATA.test(b.valido_al || '') ? b.valido_al : r.al;
+    if (!al) throw new Errore('Scrivi fino a quando valgono le offerte (la data «al»)');
+    if (al < dal) throw new Errore('La data di fine viene prima di quella di inizio');
+    db.prepare('UPDATE raccolte_volantini SET dal = ?, al = ? WHERE id = ?').run(dal, al, r.id);
+    const c = db.prepare('SELECT * FROM catene WHERE id = ?').get(r.catena_id);
+    const perPagina = new Map();
+    for (const riga of (Array.isArray(b.righe) ? b.righe : []).slice(0, 400)) { const vid = id(riga.volantino_id); if (!perPagina.has(vid)) perPagina.set(vid, []); perPagina.get(vid).push(riga); }
+    let tot = { n: 0, nuovi: [], gia: 0, caricati: [] };
+    db.transaction(() => {
+      for (const [vid, righe] of perPagina) {
+        const v = db.prepare('SELECT * FROM volantini WHERE id = ? AND raccolta_id = ?').get(vid, r.id); if (!v) continue;
+        const x = inserisci(v, c, dal, al, righe, imp(req), v.utente_id ?? req.utente.id);
+        tot = { n: tot.n + x.n, nuovi: [...tot.nuovi, ...x.nuovi], gia: tot.gia + x.gia, caricati: [...tot.caricati, ...x.caricati] };
+        // nella lettura salvata, le righe caricate si segnano fatte (così non tornano da controllare)
+        if (v.lettura) { const l = JSON.parse(v.lettura); const rl = Array.isArray(l.righe) ? l.righe : [];
+          // ogni riga mandata dice qual è nella lettura salvata («indice»): si segna caricata, oppure «c'era già»
+          for (const q of righe) { const k = Number(q.indice); if (Number.isInteger(k) && rl[k]) rl[k].fatto = x.fatti.includes(q) ? 'caricata' : 'gia'; }
+          l.righe = rl;
+          const dubbie = (l.righe || []).filter((q) => !q.fatto).length;
+          db.prepare("UPDATE volantini SET lettura = ?, stato = ?, caricate = COALESCE(caricate, 0) + ?, dubbie = ?, dal = ?, al = ?, nota = '' WHERE id = ?").run(JSON.stringify(l), dubbie ? 'da controllare' : 'letto', x.n, dubbie, dal, al, v.id);
+        } else db.prepare("UPDATE volantini SET stato = 'letto', caricate = COALESCE(caricate, 0) + ?, dubbie = 0, dal = ?, al = ? WHERE id = ?").run(x.n, dal, al, v.id);
+      }
+      // le righe lasciate fuori apposta (non spuntate) si considerano controllate: la pagina non resta «da controllare» per loro
+      if (b.scarta_resto === true) for (const v of db.prepare("SELECT id, lettura FROM volantini WHERE raccolta_id = ? AND stato = 'da controllare'").all(r.id)) {
+        const l = JSON.parse(v.lettura || '{}'); for (const q of l.righe || []) if (!q.fatto) q.fatto = 'scartata';
+        db.prepare("UPDATE volantini SET lettura = ?, stato = 'letto', dubbie = 0 WHERE id = ?").run(JSON.stringify(l), v.id);
+      }
+    })();
+    for (const k of tot.caricati) avvisaOfferta(k.p, c, k.prezzo).catch(() => {});
+    return { ok: true, prezzi: tot.n, nuovi: tot.nuovi, gia: tot.gia, raccolta: riepilogo(raccolta(r.id)) };
+  });
+  // una pagina scartata a mano (sfocata, non è un volantino): esce dal conto
+  app.delete('/api/volantini/:id', async (req) => {
+    const v = uno(id(req.params.id));
+    if (!req.utente.admin && v.utente_id !== req.utente.id) throw new Errore('Puoi togliere solo le pagine che hai mandato tu', 403);
+    if (v.stato === 'letto' && v.caricate) throw new Errore('Questa pagina ha già offerte caricate: può toglierla solo chi gestisce dai volantini');
+    db.prepare("UPDATE volantini SET stato = 'scartato', nota = 'tolta da chi l\'ha mandata' WHERE id = ?").run(v.id);
+    return { ok: true };
+  });
+
   // le offerte di un supermercato già caricate e ancora valide, e le pagine già mandate in attesa di lettura
   const giaCaricate = (cid, dal = oggi(), al = null) => {
     const o = db.prepare(`SELECT COUNT(DISTINCT prodotto_id) n, MIN(valido_dal) dal, MAX(valido_al) al, MAX(rilevato_il) il FROM prezzi
@@ -56,7 +158,11 @@ export function volantini(app, db, { Errore, id, testo, numero, imp, oggi, salva
     const impronta = crypto.createHash('sha256').update(String(req.body?.dati || '').replace(/^data:image\/jpeg;base64,/, '')).digest('hex');
     const stessa = db.prepare('SELECT foto FROM volantini WHERE impronta = ?').get(impronta);
     if (stessa) throw Object.assign(new Errore('Questa pagina è già stata mandata', 409), { extra: { gia_foto: stessa.foto || null } });
-    const cid = req.body?.catena_id ? id(req.body.catena_id) : null;
+    // 0.98: la pagina entra nel volantino in corso (raccolta) del supermercato; il supermercato viene dalla raccolta
+    let rc = req.body?.raccolta_id ? raccolta(id(req.body.raccolta_id)) : null;
+    if (rc && rc.chiusa_il) rc = apriRaccolta(rc.catena_id, req.utente.id);
+    if (!rc && req.body?.catena_id) rc = apriRaccolta(id(req.body.catena_id), req.utente.id);
+    const cid = rc ? rc.catena_id : null;
     // 0.70: quante pagine al giorno (chi gestisce non ha limiti; chi manda soprattutto doppioni o pagine inutili ne ha meno)
     if (!req.utente.admin) {
       const oggiN = db.prepare("SELECT COUNT(*) n FROM volantini WHERE utente_id = ? AND creato_il >= date('now')").get(req.utente.id).n;
@@ -74,17 +180,18 @@ export function volantini(app, db, { Errore, id, testo, numero, imp, oggi, salva
       if (s) throw Object.assign(new Errore(`Questa pagina c'è già${s.catena ? ` (volantino ${s.catena}` : ' ('}, mandata il ${s.creato_il.slice(8, 10)}/${s.creato_il.slice(5, 7)}): non serve rifotografarla`, 409), { extra: { gia_foto: s.foto || null } });
     }
     const foto = salvaJpeg(req.body?.dati, 4_500_000);
-    const vid = db.prepare('INSERT INTO volantini (utente_id, foto, catena_id, impronta, phash) VALUES (?, ?, ?, ?, ?)').run(req.utente.id, foto, cid, impronta, phash).lastInsertRowid;
+    const vid = db.prepare('INSERT INTO volantini (utente_id, foto, catena_id, impronta, phash, raccolta_id) VALUES (?, ?, ?, ?, ?, ?)').run(req.utente.id, foto, cid, impronta, phash, rc?.id ?? null).lastInsertRowid;
     // si legge subito con il modello economico (pochi decimi di centesimo a pagina), finché la spesa del mese resta sotto il tetto;
     // le offerte entrano solo quando chi gestisce le controlla e le carica
     const auto = claude.attivo() && process.env.VOLANTINI_AUTOMATICI !== '0' && spesaMese() < TETTO();
     if (auto) leggiEElabora(vid, imp(req)).catch((e) => console.error('volantino', vid, e.message));
-    return { ok: true, id: vid, leggibile: claude.attivo(), automatico: auto };
+    return { ok: true, id: vid, leggibile: claude.attivo(), automatico: auto, raccolta_id: rc?.id ?? null, numero: rc ? pagineRaccolta(rc.id).length : null };
   });
   app.get('/api/volantini', async () => ({
     attivo: claude.attivo(), modello: claude.modelloVolantini(), preciso: claude.modello(), tetto: TETTO(),
     spesa: db.prepare("SELECT ROUND(COALESCE(SUM(costo), 0), 2) euro, COUNT(*) n FROM volantini WHERE costo IS NOT NULL AND creato_il >= date('now', 'start of month')").get(),
-    lista: db.prepare(`SELECT v.id, v.foto, v.stato, v.creato_il, v.costo, v.catena_id, c.nome catena, u.nome, v.lettura IS NOT NULL letto, v.caricate, v.dubbie, v.dal, v.al, v.nota FROM volantini v LEFT JOIN catene c ON c.id = v.catena_id
+    raccolte: raccolteRecenti(60).map((r) => riepilogo(r)),
+    lista: db.prepare(`SELECT v.id, v.foto, v.stato, v.creato_il, v.costo, v.catena_id, v.raccolta_id, c.nome catena, u.nome, v.lettura IS NOT NULL letto, v.caricate, v.dubbie, v.dal, v.al, v.nota FROM volantini v LEFT JOIN catene c ON c.id = v.catena_id
       LEFT JOIN utenti u ON u.id = v.utente_id ORDER BY v.stato = 'da controllare' DESC, v.stato = 'da leggere' DESC, v.id DESC LIMIT 150`).all(),
   }));
   app.get('/api/volantini/:id', async (req) => { const v = uno(id(req.params.id)); return { ...v, lettura: v.lettura ? JSON.parse(v.lettura) : null }; });
@@ -143,14 +250,23 @@ export function volantini(app, db, { Errore, id, testo, numero, imp, oggi, salva
     const v = uno(vid); if (!v.lettura) return null;
     const l = JSON.parse(v.lettura); const righe = Array.isArray(l.righe) ? l.righe : [];
     if (!righe.length) { db.prepare("UPDATE volantini SET stato = 'scartato', nota = ?, caricate = 0, dubbie = 0 WHERE id = ?").run('nessuna offerta letta sulla pagina', vid); return { stato: 'scartato' }; }
-    const c = l.catena_id ? db.prepare('SELECT * FROM catene WHERE id = ?').get(l.catena_id) : null;
-    const dal = l.valido_dal || oggi(); const al = l.valido_al || null;
+    // 0.98: il supermercato è quello del volantino (raccolta); le date, se la pagina non le ha, sono quelle del volantino.
+    // Se la pagina le ha e il volantino no, le prende il volantino (e le pagine ferme per «manca la data» si rifanno)
+    const rc = v.raccolta_id ? raccolta(v.raccolta_id) : null;
+    const c = rc ? db.prepare('SELECT * FROM catene WHERE id = ?').get(rc.catena_id) : l.catena_id ? db.prepare('SELECT * FROM catene WHERE id = ?').get(l.catena_id) : null;
+    let dal = l.valido_dal || rc?.dal || oggi(); let al = l.valido_al || rc?.al || null;
+    // sulla pagina si legge il nome di un altro supermercato: non si carica niente da soli (e le sue date non valgono per il volantino)
+    const letto = rc && l.supermercato ? catenaDa(l.supermercato) : null;
+    const altroSuper = letto && letto.id !== rc.catena_id ? letto.nome : '';
+    let dateNuove = false;
+    if (rc && !rc.al && l.valido_al && !altroSuper) { db.prepare('UPDATE raccolte_volantini SET dal = ?, al = ? WHERE id = ?').run(l.valido_dal || dal, l.valido_al, rc.id); dateNuove = true; }
+    if (altroSuper) { dal = rc.dal || dal; al = rc.al || null; }
     const giaC = (r) => c && al && r.prodotto_id && db.prepare("SELECT 1 FROM prezzi WHERE prodotto_id = ? AND catena_id = ? AND offerta = 1 AND abs(prezzo - ?) < 0.005 AND valido_dal = ? AND valido_al = ?").get(r.prodotto_id, c.id, Number(r.prezzo), dal, al);
     const plausibile = (r) => { const u = ultimoPrezzo(r.prodotto_id); const x = Number(r.prezzo); return x > 0 && (u == null || (x >= u / 3 && x <= u * 1.3)); };
     let nota = '';
-    if (!c) nota = 'manca il supermercato'; else if (!al) nota = 'manca la data di fine delle offerte';
-    for (const r of righe) { delete r.fatto; if (giaC(r)) r.fatto = 'gia'; }
-    const sicure = c && al ? righe.filter((r) => !r.fatto && r.prodotto_id && r.sicuro && plausibile(r)) : [];
+    if (!c) nota = 'manca il supermercato'; else if (altroSuper) nota = `sulla pagina si legge «${altroSuper}», non ${c.nome}: controlla`; else if (!al) nota = 'manca la data di fine delle offerte';
+    for (const r of righe) { if (r.fatto !== 'caricata' && r.fatto !== 'scartata') delete r.fatto; if (!r.fatto && giaC(r)) r.fatto = 'gia'; }
+    const sicure = c && al && !altroSuper ? righe.filter((r) => !r.fatto && r.prodotto_id && r.sicuro && plausibile(r)) : [];
     let x = { n: 0, caricati: [], fatti: [] };
     db.transaction(() => {
       if (sicure.length) x = inserisci(v, c, dal, al, sicure, s, v.utente_id);
@@ -164,6 +280,7 @@ export function volantini(app, db, { Errore, id, testo, numero, imp, oggi, salva
         .run(JSON.stringify(l), stato, x.n, dubbie, dal, al, nota || (doppione ? 'offerte già caricate da altre pagine' : ''), c?.id ?? null, vid);
     })();
     for (const k of x.caricati) avvisaOfferta(k.p, c, k.prezzo).catch(() => {});
+    if (dateNuove) rielaboraFerme(rc.id);
     return { stato: uno(vid).stato, caricate: x.n };
   }
   async function leggiEElabora(vid, s) { await leggi(uno(vid)); return elabora(vid, s); }
@@ -182,6 +299,7 @@ export function volantini(app, db, { Errore, id, testo, numero, imp, oggi, salva
       db.prepare(`UPDATE volantini SET foto = ''${daFare ? ", stato = 'scartato', nota = 'offerte scadute prima del controllo'" : ''} WHERE id = ?`).run(v.id);
     }
     if (vecchie.length) console.log(`volantini: tolte ${vecchie.length} foto di offerte scadute`);
+    db.prepare("UPDATE raccolte_volantini SET chiusa_il = datetime('now') WHERE chiusa_il IS NULL AND (creata_il < datetime('now', '-10 days') OR (al IS NOT NULL AND al < ?))").run(oggi());
     return { tolte: vecchie.length };
   }
   app.post('/api/volantini/pulizia', async (req) => { if (!req.utente?.admin) throw new Errore('Questa parte è riservata a chi gestisce i prezzi', 403); return pulisciFoto(); });

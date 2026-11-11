@@ -122,7 +122,7 @@ export default function App() {
         base === 'nuovo-prodotto' ? <><Torna a="#altro" t="Altro" /><NuovoProdotto /></> :
         base === 'prodotto' ? <Scheda key={pagina} id={sotto} chiedi={terzo} /> :
         base === 'prezzi' ? <><Torna a={sotto ? '#prezzi' : '#altro'} t={sotto ? 'Prezzi' : 'Altro'} /><Prezzi stato={s} id={sotto} /></> :
-        base === 'altro' ? <Altro stato={s} ricaricaStato={stato.ricarica} sezione={sotto} /> :
+        base === 'altro' ? <Altro stato={s} ricaricaStato={stato.ricarica} sezione={sotto} dettaglio={terzo} /> :
         base === 'famiglia' ? <><Torna a="#altro" t="Altro" /><Famiglia stato={s} ricaricaStato={stato.ricarica} /></> :
         base === 'scegli' ? <Scegli id={sotto} onCambiata={() => setVersione((v) => v + 1)} /> :
         base === 'supermercati' ? <><Torna a="#altro" t="Altro" /><MieiSupermercati stato={s} /></> :
@@ -720,7 +720,7 @@ function FotoAutomatiche() {
 }
 
 // ---------- altro: preferenze e gestione ----------
-function Altro({ stato, ricaricaStato, sezione }) {
+function Altro({ stato, ricaricaStato, sezione, dettaglio = null }) {
   if (sezione === 'negozi') return <Negozi stato={stato} />;
   if (sezione === 'scontrini') return <Scontrini />;
   if (sezione === 'impostazioni') return <Impostazioni stato={stato} ricarica={ricaricaStato} />;
@@ -729,7 +729,7 @@ function Altro({ stato, ricaricaStato, sezione }) {
   if (sezione === 'whatsapp') return <><Torna a="#altro" t="Altro" /><WhatsappApp /></>;
   if (sezione === 'produttori') return <><Torna a="#altro" t="Altro" /><GestioneProduttori /></>;
   if (sezione === 'statistiche') return <><Torna a="#altro" t="Altro" /><Statistiche /></>;
-  if (sezione === 'volantini') return <><Torna a="#altro" t="Altro" /><GestioneVolantini /></>;
+  if (sezione === 'volantini') return <><Torna a="#altro" t="Altro" /><GestioneVolantini raccoltaId={dettaglio} /></>;
   if (sezione === 'doppioni') return <><Torna a="#altro" t="Altro" /><SchedeDoppie /></>;
   if (sezione === 'foto') return <><Torna a="#altro" t="Altro" /><FotoAutomatiche /></>;
   const c = stato.conti; const u = stato.utente;
