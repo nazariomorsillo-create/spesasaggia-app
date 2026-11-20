@@ -50,7 +50,8 @@ export function Etichette({ p }) {
     {p.confrontabile === false || p.formatoMancante ? <span className="pill vecchio">formato da completare</span> : null}
   </span>;
 }
-export function StatoPrezzo({ s, al }) {
+export function StatoPrezzo({ s, al, dal }) {
+  if (s === 'prossimo') return <span className="pill offerta-prossima">in offerta dal {data(dal)}</span>; // 1.1: volantino che parte nei prossimi giorni
   if (s === 'scaduto') return <span className="pill scaduto">scaduto</span>;
   if (s === 'vecchio') return <span className="pill vecchio">da ricontrollare</span>;
   return al ? <span className="pill">fino al {data(al)}</span> : null;

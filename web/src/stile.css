@@ -5365,3 +5365,6 @@ body::before {
 .nella-testo { display: inline-flex; align-items: center; gap: 8px; }
 .nella-testo svg { color: #2e9d57; flex: none; }
 .nella-lista .b { margin-left: auto; }
+
+/* 1.1: prodotto del volantino che entra in offerta nei prossimi giorni */
+.pill.offerta-prossima { background: #fff4e5; color: #9a4a00; border: 1px solid #f3b36b; }

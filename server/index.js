@@ -1296,7 +1296,16 @@ app.get('/api/scansiona/:ean', async (req) => {
 });
 
 // ---------- lista ----------
+// 1.1: una riga con un prodotto preciso, ancora senza supermercato e che non hai spostato o rifiutato («Torna a…»),
+// se quel prodotto è in un volantino va nel giro di quel supermercato (anche se l'avevi messa in lista prima)
+function righeAlVolantino(req) {
+  if (!req.famiglia) return;
+  const righe = db.prepare('SELECT id, prodotto_id FROM righe_lista WHERE famiglia_id = ? AND preso = 0 AND prodotto_id IS NOT NULL AND catena_id IS NULL AND catena_libera IS NULL AND offerta_nascosta = 0').all(req.famiglia.id);
+  const metti = db.prepare('UPDATE righe_lista SET catena_id = ? WHERE id = ? AND catena_id IS NULL');
+  for (const r of righe) { const cid = catenaDellOfferta(req, r.prodotto_id); if (cid) metti.run(cid, r.id); }
+}
 const lista = (req) => {
+  righeAlVolantino(req);
   const righe = db.prepare(`SELECT r.*, v.nome voce, v.unita, v.reparto, v.pezzo, p.nome prodotto_scelto, p.foto, p.quantita prodotto_quantita, c.nome catena_marchio FROM righe_lista r JOIN voci v ON v.id = r.voce_id LEFT JOIN prodotti p ON p.id = r.prodotto_id LEFT JOIN catene c ON c.id = p.catena_id WHERE r.famiglia_id = ? ORDER BY r.ordine, r.id`).all(req.famiglia.id);
   if (!righe.length) return righe;
   // 0.55: il voto del prodotto scelto, per il pallino accanto al nome
@@ -1389,7 +1398,14 @@ function catenaDellOfferta(req, pid) {
     visti.add(r.catena_id);
     if (statoPrezzo(r, d, s.giorni_validi) !== 'scaduto') validi.push(r);
   }
-  const offerte = validi.filter((r) => r.offerta).sort((a, b) => a.prezzo - b.prezzo);
+  let offerte = validi.filter((r) => r.offerta).sort((a, b) => a.prezzo - b.prezzo);
+  // 1.1 (Nazario, 20/11): il volantino caricato oggi può valere da lunedì. Senza un'offerta di oggi conta anche quella
+  // che deve ancora cominciare (la più vicina): il prodotto va comunque nel giro di quel supermercato
+  if (!offerte.length) {
+    const prossime = new Map();
+    for (const r of righe) if (r.offerta && r.valido_dal > d && (!r.valido_al || r.valido_al >= d) && valeQui(r, s) && (!prossime.has(r.catena_id) || r.valido_dal < prossime.get(r.catena_id).valido_dal)) prossime.set(r.catena_id, r);
+    offerte = [...prossime.values()].sort((a, b) => a.valido_dal.localeCompare(b.valido_dal) || a.prezzo - b.prezzo);
+  }
   if (!offerte.length) return null;
   const mie = new Set(mieCatene(req) || []);
   const mia = offerte.find((r) => !mie.size || mie.has(r.catena_id));

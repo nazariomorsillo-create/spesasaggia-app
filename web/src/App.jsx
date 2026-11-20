@@ -639,7 +639,7 @@ function Negozio({ n, liberi = [], propLib, presi, nonCera, onSpunta, onNonCera 
         <button type="button" className="spunta" role="checkbox" aria-checked={preso} aria-label={`${x.riga.voce}: ${preso ? 'preso' : 'da prendere'}`} onClick={() => onSpunta(x.riga, n.catena_id)}>{preso ? <Icona n="spunta" d={28} /> : null}</button>
         {x.foto ? <img className="giro-foto" src={x.foto} alt="" loading="lazy" /> : null}
         <div><span className="nome-cestino"><b>{x.riga.voce}</b>{!preso && propLib.onTogli && <Cestino nome={x.riga.voce} onSi={() => propLib.onTogli(x.riga)} />}</span><span>{x.confezioni ? `${x.confezioni} ${x.confezioni === 1 ? 'confezione' : 'confezioni'}` : quanto(x.riga.quantita, x.riga.unita)}: {x.prodotto}</span>
-          <span className="etichette"><Semaforo q={x.qualita} piccolo sempre /><Etichette p={x} />{x.offerta && <span className="pill offerta">offerta</span>}<StatoPrezzo s={x.stato} al={x.valido_al} /></span>
+          <span className="etichette"><Semaforo q={x.qualita} piccolo sempre /><Etichette p={x} />{x.offerta && <span className="pill offerta">offerta</span>}<StatoPrezzo s={x.stato} al={x.valido_al} dal={x.valido_dal} /></span>
         </div>
         <Cartellino n={x.costo} />
         {!preso && <div className="libera-azioni non-cera-tasto">
@@ -697,7 +697,7 @@ function Soluzione({ s, prima = false, fuori = [] }) {
       {(n.indirizzo || n.nome) && <p className="muto">{n.indirizzo || n.nome}{n.indirizzo && n.citta ? `, ${n.citta}` : ""}</p>}
       <ul className="acquisti">{n.righe.map((x) => <li key={x.riga.id}>
         <div><b>{x.riga.voce}</b><span>{x.confezioni ? `${x.confezioni} ${x.confezioni === 1 ? 'confezione' : 'confezioni'}` : quanto(x.riga.quantita, x.riga.unita)}: {x.prodotto}</span>
-          <span className="etichette"><Semaforo q={x.qualita} piccolo sempre /><Etichette p={x} />{x.offerta && <span className="pill offerta">offerta</span>}<StatoPrezzo s={x.stato} al={x.valido_al} /></span></div>
+          <span className="etichette"><Semaforo q={x.qualita} piccolo sempre /><Etichette p={x} />{x.offerta && <span className="pill offerta">offerta</span>}<StatoPrezzo s={x.stato} al={x.valido_al} dal={x.valido_dal} /></span></div>
         <Cartellino n={x.costo} /></li>)}</ul>
       {s.negozi.length > 1 && <p className="subtotale">Da {n.catena} spendi <b>{euro(n.subtotale)}</b></p>}
     </div>)}

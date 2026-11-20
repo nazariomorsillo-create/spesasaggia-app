@@ -83,6 +83,16 @@ export function miglioriPerCatena(db, righe, data, s, soloCatene = null) {
   const voti = new Map(db.prepare('SELECT prodotto_id, AVG(stelle) media, COUNT(*) n FROM valutazioni GROUP BY prodotto_id').all().map((v) => [v.prodotto_id, { media: Math.round(v.media * 10) / 10, n: v.n }]));
   const prodotti = db.prepare('SELECT p.*, v.nome voce, v.reparto FROM prodotti p JOIN voci v ON v.id = p.voce_id').all().map((p) => ({ ...p, qualita: punteggio(p, voti.get(p.id) || null) }));
   const catene = db.prepare('SELECT * FROM catene').all().filter((c) => !soloCatene || soloCatene.includes(c.id));
+  // 1.1: le offerte dei volantini che devono ancora cominciare, solo per le righe già legate a quel supermercato
+  // (il volantino Aldi di lunedì messo in lista oggi): così la riga sta nella pagina di Aldi con «in offerta dal 23»
+  const prossime = new Map();
+  if (righe.some((r) => r.catena_id)) {
+    for (const r of db.prepare(`SELECT pr.*, c.ambito, v.reparto FROM prezzi pr JOIN catene c ON c.id = pr.catena_id JOIN prodotti p ON p.id = pr.prodotto_id JOIN voci v ON v.id = p.voce_id
+      WHERE pr.offerta = 1 AND pr.superato_il IS NULL AND pr.valido_dal > ? AND (pr.valido_al IS NULL OR pr.valido_al >= ?) ORDER BY pr.valido_dal, pr.id DESC`).all(data, data)) {
+      const k = `${r.prodotto_id}|${r.catena_id}`;
+      if (!prossime.has(k) && valeQui(r, s)) prossime.set(k, { ...r, stato: 'prossimo' });
+    }
+  }
   const tabella = new Map(); // riga.id → Map(catena_id → acquisto)
   for (const r of righe) {
     const m = new Map();
@@ -91,7 +101,7 @@ export function miglioriPerCatena(db, righe, data, s, soloCatene = null) {
       let best = null;
       for (const p of prodotti) {
         if (!rispetta(p, r)) continue;
-        const pr = prezzi.get(`${p.id}|${c.id}`);
+        const pr = prezzi.get(`${p.id}|${c.id}`) || (r.catena_id === c.id ? prossime.get(`${p.id}|${c.id}`) : null);
         if (!pr) continue;
         const k = costo(p, pr, r.quantita, r.unita, !!r.prodotto_id);
         if (!k) continue;
@@ -244,5 +254,5 @@ const rigaCorta = (r) => ({ id: r.id, voce: r.voce, catena_libera: r.catena_libe
 const acquisto = (x) => ({
   riga: rigaCorta(x.riga), prodotto: x.prodotto.nome, prodotto_id: x.prodotto.id, foto: x.prodotto.foto || '', tipo: x.prodotto.tipo, marca: x.prodotto.marca, origine: x.prodotto.origine, bio: !!x.prodotto.bio, qualita: x.prodotto.qualita ?? null,
   confezioni: x.confezioni, formatoMancante: !!x.formatoMancante, costo: x.costo, prezzo: x.prezzo.prezzo, unitario: x.prezzo.unitario, offerta: !!x.prezzo.offerta,
-  rilevato_il: x.prezzo.rilevato_il, valido_al: x.prezzo.valido_al, stato: x.prezzo.stato,
+  rilevato_il: x.prezzo.rilevato_il, valido_dal: x.prezzo.valido_dal || null, valido_al: x.prezzo.valido_al, stato: x.prezzo.stato,
 });
