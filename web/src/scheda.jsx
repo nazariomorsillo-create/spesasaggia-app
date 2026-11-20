@@ -62,7 +62,7 @@ export function Scheda({ id, chiedi }) {
           <span className="nella-testo"><Icona n="spunta" d={24} /><span><b>È nella tua lista</b>{p.in_lista.catena ? <>: lo prendi da <b>{p.in_lista.catena}</b></> : ''}</span></span>
           <a className="b pieno-verde" href={p.in_lista.catena_id ? '#giro' : '#lista'} onClick={() => { if (p.in_lista.catena_id) mem.scrivi('giro-pagina', `c${p.in_lista.catena_id}`); }}>{p.in_lista.catena_id ? `Vai al giro di ${p.in_lista.catena}` : 'Vai alla lista'}</a>
         </div>
-          : <button type="button" className="b pieno grande" onClick={() => azione(() => api('/api/lista', { metodo: 'POST', corpo: { voce_id: p.voce_id, prodotto_id: p.id, quantita: p.sfuso ? 1 : (p.quantita || 1), scelto: true } }))}>Metti in lista questo</button>}
+          : <button type="button" className="b pieno grande" onClick={() => azione(() => api('/api/lista', { metodo: 'POST', corpo: { voce_id: p.voce_id, prodotto_id: p.id, quantita: p.sfuso ? 1 : (p.quantita || 1), scelto: true } }).then(() => dispatchEvent(new Event('conta-offerte'))))}>Metti in lista questo</button>}
         {!chiediPrezzo && !p.ultimi.length && <button type="button" className="b grande contorno viola" onClick={() => { setPrezzo(true); suCima(); }}>Aggiungi un prezzo</button>}
         <button type="button" className={`b grande ${p.preferito ? 'giallo' : ''}`} aria-pressed={p.preferito} onClick={() => azione(() => api('/api/preferiti', { metodo: 'POST', corpo: { voce_id: p.voce_id, prodotto_id: p.preferito ? null : p.id } }), p.preferito ? 'Tolto dai preferiti' : `Ora è il tuo preferito per «${p.voce}»`)}>{p.preferito ? '★ È il mio preferito' : '☆ Segna come preferito'}</button>
       </div>

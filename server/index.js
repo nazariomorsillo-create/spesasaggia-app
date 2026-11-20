@@ -965,7 +965,8 @@ function offerteDi(req) {
   return { data, offerte, inArrivo, reparti, categorie: categorie(offerte), categorieInArrivo: categorie(inArrivo), zona: { supermercati: ammessi.size, ovunque, casa: !!casa?.lat, raggio } };
 }
 app.get('/api/offerte', async (req) => offerteDi(req));
-const contaOfferte = (req) => { try { return offerteDi(req).offerte.length; } catch { return 0; } };
+// 1.00 (Nazario, 20/11): si contano solo le offerte non ancora messe in lista (pallino su «Offerte» e «Oppure parti dalle offerte»)
+const contaOfferte = (req) => { try { return offerteDi(req).offerte.filter((x) => !x.inLista).length; } catch { return 0; } };
 // i supermercati nel raggio d'azione della famiglia (dai negozi vicino a casa)
 function catenePerRaggio(req) {
   const casa = imp(req).casa; const raggio = req.famiglia?.raggio || 10; const vicine = new Set();
@@ -1127,7 +1128,9 @@ app.get('/api/suggerisci', async (req) => {
   const tutteLeParole = (testo) => quanteParole(testo) === parole.length;
   const abituali = abitualiDi(req); const mie = new Set(mieCatene(req) || []);
   const prezzi = prezziValidi(db, oggi(), imp(req)); const catene = new Map(db.prepare('SELECT id, nome FROM catene').all().map((c) => [c.id, c.nome]));
-  const tuttiProdotti = db.prepare("SELECT p.*, v.nome voce, v.unita, v.pezzo, v.reparto FROM prodotti p JOIN voci v ON v.id = p.voce_id").all();
+  // 1.00 (Nazario, 20/11): un prodotto già messo in lista (e non ancora preso) sparisce dai suggerimenti
+  const giaInLista = new Set(req.famiglia ? db.prepare('SELECT prodotto_id FROM righe_lista WHERE famiglia_id = ? AND preso = 0 AND prodotto_id IS NOT NULL').pluck().all(req.famiglia.id) : []);
+  const tuttiProdotti = db.prepare("SELECT p.*, v.nome voce, v.unita, v.pezzo, v.reparto FROM prodotti p JOIN voci v ON v.id = p.voce_id").all().filter((p) => !giaInLista.has(p.id));
   const testoP = (p) => `${p.nome} ${p.marca} ${p.voce} ${p.nome_scontrino || ''}`;
   let prodotti = tuttiProdotti.filter((p) => tutteLeParole(testoP(p)));
   // 0.72: se con tutte le parole non c'è niente con un prezzo, bastano metà delle parole («formaggio duro grattugiato»)

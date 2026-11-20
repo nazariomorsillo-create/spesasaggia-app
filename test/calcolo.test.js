@@ -976,8 +976,9 @@ test('offerte di oggi per reparto: solo nei miei supermercati e vicino a casa, r
   const l = await chiama('POST', '/api/lista', { voce_id: zs.voce_id, prodotto_id: zs.prodotto_id, quantita: zs.daMettere, scelto: true });
   assert.equal(l.length, 1); assert.equal(l[0].prodotto_id, zs.prodotto_id); assert.equal(l[0].scelto, 1);
   assert.equal((await chiama('GET', '/api/offerte')).offerte.find((x) => x.prodotto_id === zs.prodotto_id).inLista, true);
-  // lo stato dice quante offerte ci sono (per la home e la voce «Offerte» in basso)
-  const st = await chiama('GET', '/api/stato'); assert.equal(st.offerte, o.offerte.length);
+  // lo stato dice quante offerte ci sono da mettere in lista (per la home e la voce «Offerte» in basso):
+  // 1.00 (Nazario, 20/11) quelle già in lista non si contano più
+  const st = await chiama('GET', '/api/stato'); assert.equal(st.offerte, o.offerte.length - 1);
 });
 
 test('orari da internet: Claude cerca sul web i negozi dei supermercati scelti rimasti senza orari; quelli a mano non si toccano; una volta al mese', async () => {

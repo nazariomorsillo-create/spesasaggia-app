@@ -50,6 +50,8 @@ export default function App() {
   const [attesa, setAttesa] = useState(false);
   const [inBenvenuto, setInBenvenuto] = useState(false);
   useEffect(() => { const f = () => stato.ricarica(); addEventListener('accesso', f); return () => removeEventListener('accesso', f); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // 1.00: la lista è cambiata → si ricontano le offerte da mettere in lista (pallino su «Offerte»)
+  useEffect(() => { const f = () => stato.ricarica(); addEventListener('conta-offerte', f); addEventListener('lista-cambiata', f); return () => { removeEventListener('conta-offerte', f); removeEventListener('lista-cambiata', f); }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // quando si torna sull'app (da un'altra app o dal telefono bloccato) lo stato si rilegge
   useEffect(() => { const f = () => { if (document.visibilityState === 'visible') stato.ricarica(); }; document.addEventListener('visibilitychange', f); return () => document.removeEventListener('visibilitychange', f); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // il server ha una versione nuova: si ricarica la pagina una volta sola per quella versione
@@ -168,7 +170,7 @@ function Lista({ stato, versione, onParla }) {
   const lista = useDati('/api/lista');
   const [err, setErr] = useState(''); const [inModulo, setInModulo] = useState(false); // il modulo «nuovo prodotto» occupa la pagina da solo
   useEffect(() => { if (versione) lista.ricarica(); }, [versione]); // eslint-disable-line react-hooks/exhaustive-deps
-  const fai = async (p) => { setErr(''); try { lista.setDati(await p); } catch (e) { setErr(e.message); } };
+  const fai = async (p) => { setErr(''); try { lista.setDati(await p); dispatchEvent(new Event('conta-offerte')); } catch (e) { setErr(e.message); } };
   const [avvisoLista, setAvvisoLista] = useState('');
   useEffect(() => { if (!avvisoLista) return undefined; const t = setTimeout(() => setAvvisoLista(''), 3500); return () => clearTimeout(t); }, [avvisoLista]);
   useEffect(() => { const f = () => lista.ricarica(); addEventListener('lista-cambiata', f); return () => removeEventListener('lista-cambiata', f); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -185,7 +187,7 @@ function Lista({ stato, versione, onParla }) {
   useEffect(() => { if (!tolto) return undefined; const t = setTimeout(() => setTolto(null), 7000); return () => clearTimeout(t); }, [tolto]);
   const togli = async (r) => {
     setErr(''); lista.setDati((l) => l.filter((x) => x.id !== r.id));
-    try { lista.setDati(await api(`/api/lista/${r.id}`, { metodo: 'DELETE' })); } catch (e) { setErr(e.message); lista.ricarica(); }
+    try { lista.setDati(await api(`/api/lista/${r.id}`, { metodo: 'DELETE' })); dispatchEvent(new Event('conta-offerte')); } catch (e) { setErr(e.message); lista.ricarica(); }
   };
   const rimetti = () => {
     const r = tolto; setTolto(null);

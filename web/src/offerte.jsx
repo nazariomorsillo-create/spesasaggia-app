@@ -53,7 +53,7 @@ export function Offerte({ stato }) {
   const cambiaQuando = (q) => { setQuando(q); setCat('tutte'); };
   const metti = async (x) => {
     setErr(''); setAttesa(x.prodotto_id);
-    try { await api('/api/lista', { metodo: 'POST', corpo: { voce_id: x.voce_id, prodotto_id: x.prodotto_id, quantita: x.daMettere, scelto: true } }); setMesse({ ...messe, [x.prodotto_id]: true }); }
+    try { await api('/api/lista', { metodo: 'POST', corpo: { voce_id: x.voce_id, prodotto_id: x.prodotto_id, quantita: x.daMettere, scelto: true } }); setMesse({ ...messe, [x.prodotto_id]: true }); dispatchEvent(new Event('conta-offerte')); }
     catch (e) { setErr(e.message); } finally { setAttesa(null); }
   };
   const inLista = (x) => x.inLista || messe[x.prodotto_id];
