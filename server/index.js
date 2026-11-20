@@ -802,7 +802,9 @@ app.get('/api/prodotti/:id', async (req) => {
   const precedenti = storia.filter((x) => !attuale(x));
   const v = voto(p.id);
   const mio = db.prepare('SELECT stelle FROM valutazioni WHERE utente = ? AND prodotto_id = ?').get(`u${req.utente.id}`, p.id)?.stelle || 0;
-  return { ...p, sfuso: !!p.sfuso, bio: !!p.bio, confrontabile: confrontabile(p), preferito: preferitoDi(p.voce_id, req) === p.id, qualita: punteggio(p, v), giudizio: giudizio(punteggio(p, v)), additivi: additiviDi(p) ? elencoAdditivi(additiviDi(p)) : null, voto: v, mioVoto: mio, ultimi, storia: precedenti, perche: dettaglio(p, v), puoUnire: !!req.utente.admin };
+  // 0.99: già in lista? La scheda dice «È nella tua lista, da Aldi» al posto di «Metti in lista questo»
+  const riga = req.famiglia ? db.prepare('SELECT r.id, r.catena_id, c.nome catena FROM righe_lista r LEFT JOIN catene c ON c.id = r.catena_id WHERE r.famiglia_id = ? AND r.prodotto_id = ? AND r.preso = 0 ORDER BY r.id LIMIT 1').get(req.famiglia.id, p.id) : null;
+  return { ...p, in_lista: riga ? { id: riga.id, catena_id: riga.catena_id, catena: riga.catena || null } : null, sfuso: !!p.sfuso, bio: !!p.bio, confrontabile: confrontabile(p), preferito: preferitoDi(p.voce_id, req) === p.id, qualita: punteggio(p, v), giudizio: giudizio(punteggio(p, v)), additivi: additiviDi(p) ? elencoAdditivi(additiviDi(p)) : null, voto: v, mioVoto: mio, ultimi, storia: precedenti, perche: dettaglio(p, v), puoUnire: !!req.utente.admin };
 });
 app.post('/api/valutazioni', async (req) => {
   const pid = id(req.body?.prodotto_id); if (!db.prepare('SELECT 1 FROM prodotti WHERE id = ?').get(pid)) throw new Errore('Prodotto non trovato', 404);
@@ -1370,11 +1372,39 @@ const conAbitudine = (fid, d, b) => { if (!d.voce_id) return d; const a = abitud
 // 0.84: le cose prese nei giorni passati vanno nello storico (Le mie spese), una spesa per supermercato e giorno
 let archiviaSpese = null;
 app.get('/api/lista', async (req) => { if (archiviaSpese) await archiviaSpese(req, { soloVecchie: true }).catch((e) => console.error('archivio spese:', e.message)); return lista(req); });
+// 0.99 (Nazario, 20/11): un prodotto del volantino di Aldi messo in lista va nel giro di Aldi, punto. Se il prodotto
+// ha un'offerta valida oggi in uno dei tuoi supermercati (o solo fuori dai tuoi, e nei tuoi non c'è proprio), la riga
+// nasce già con quel supermercato. Altrimenti decide il giro come prima (e l'offerta altrove resta un suggerimento).
+function catenaDellOfferta(req, pid) {
+  const s = imp(req); const d = oggi();
+  const righe = db.prepare(`SELECT pr.*, c.ambito, v.reparto FROM prezzi pr JOIN catene c ON c.id = pr.catena_id
+    JOIN prodotti p ON p.id = pr.prodotto_id JOIN voci v ON v.id = p.voce_id
+    WHERE pr.prodotto_id = ? AND pr.rilevato_il <= ? AND pr.superato_il IS NULL ORDER BY pr.rilevato_il DESC, pr.id DESC`).all(pid, d);
+  const visti = new Set(); const validi = [];
+  for (const r of righe) { // come prezziValidi: per ogni supermercato il prezzo più recente, se vale qui e oggi
+    if (!valeQui(r, s) || (r.valido_dal && r.valido_dal > d) || visti.has(r.catena_id)) continue;
+    visti.add(r.catena_id);
+    if (statoPrezzo(r, d, s.giorni_validi) !== 'scaduto') validi.push(r);
+  }
+  const offerte = validi.filter((r) => r.offerta).sort((a, b) => a.prezzo - b.prezzo);
+  if (!offerte.length) return null;
+  const mie = new Set(mieCatene(req) || []);
+  const mia = offerte.find((r) => !mie.size || mie.has(r.catena_id));
+  if (mia) return mia.catena_id;
+  return validi.some((r) => mie.has(r.catena_id)) ? null : offerte[0].catena_id;
+}
 app.post('/api/lista', async (req) => {
   const d = conAbitudine(req.famiglia.id, datiRiga(req.body || {}), req.body || {});
   if (!d.voce_id) throw new Errore('Scegli cosa comprare');
+  const cid = d.prodotto_id ? catenaDellOfferta(req, d.prodotto_id) : null;
+  // 0.99: lo stesso prodotto già in lista (non ancora preso) non si raddoppia: si aggiorna la quantità di quella riga
+  const gia = d.prodotto_id ? db.prepare('SELECT id FROM righe_lista WHERE famiglia_id = ? AND prodotto_id = ? AND preso = 0 ORDER BY id LIMIT 1').get(req.famiglia.id, d.prodotto_id) : null;
+  if (gia) {
+    db.prepare('UPDATE righe_lista SET quantita = ?, scelto = 1, catena_id = COALESCE(catena_id, ?) WHERE id = ?').run(d.quantita, cid, gia.id);
+    return lista(req);
+  }
   // chi mette in lista un prodotto preciso (dalla ricerca, dalle offerte, dal codice a barre) ha già scelto: niente «Scegli» da rifare
-  db.prepare('INSERT INTO righe_lista (voce_id, prodotto_id, quantita, qualita, marca, ordine, famiglia_id, scelto) VALUES (@voce_id, @prodotto_id, @quantita, @qualita, @marca, @o, @f, @scelto)').run({ ...d, o: ordine(req), f: req.famiglia.id, scelto: d.prodotto_id || d.scelto ? 1 : 0 });
+  db.prepare('INSERT INTO righe_lista (voce_id, prodotto_id, quantita, qualita, marca, ordine, famiglia_id, scelto, catena_id) VALUES (@voce_id, @prodotto_id, @quantita, @qualita, @marca, @o, @f, @scelto, @cid)').run({ ...d, o: ordine(req), f: req.famiglia.id, scelto: d.prodotto_id || d.scelto ? 1 : 0, cid });
   return lista(req);
 });
 app.put('/api/lista/:id', async (req) => {

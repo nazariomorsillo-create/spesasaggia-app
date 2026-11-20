@@ -5359,3 +5359,9 @@ body::before {
 .raccolta .chiusura { gap: 10px; }
 .gruppo-pagina { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 2px solid var(--linea); }
 .gruppo-pagina .mini img { width: 44px; height: 58px; object-fit: cover; border-radius: 6px; border: 1px solid var(--linea); }
+
+/* 0.99: nella scheda prodotto, al posto di «Metti in lista questo» quando c'è già */
+.nella-lista { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; width: 100%; padding: 12px 14px; border-radius: 14px; background: #e8f6ec; border: 2px solid #2e9d57; color: #14532d; font-size: 1.05rem; }
+.nella-testo { display: inline-flex; align-items: center; gap: 8px; }
+.nella-testo svg { color: #2e9d57; flex: none; }
+.nella-lista .b { margin-left: auto; }

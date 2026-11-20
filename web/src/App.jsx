@@ -218,6 +218,7 @@ function Lista({ stato, versione, onParla }) {
     <InvitoInSospeso onFatto={() => lista.ricarica()} />
     <Avvisi versione={versione} />
     <Ricerca onAggiungi={(p) => fai(p)} onAvviso={setAvvisoLista} onModulo={setInModulo} inMezzo={<>
+      {avvisoLista && <div className="ok" role="status">{avvisoLista}</div>}
       <button type="button" className="parla-riga" onClick={onParla}>
         <span className="microfono medio" aria-hidden="true"><Icona n="microfono" d={34} /></span>
         <span><b>Oppure parla</b><span>Tocca e di' cosa ti serve: «il latte e due chili di patate»</span></span>
@@ -229,7 +230,6 @@ function Lista({ stato, versione, onParla }) {
       <a className="come-link" href="#come"><Icona n="aiuto" d={26} /> Come funziona l'app</a>
     </>} />
     {!inModulo && <>
-    {avvisoLista && <div className="ok" role="status">{avvisoLista}</div>}
     {appenaPreso && <div className="tolto" role="status"><span>Comprato: <b>{appenaPreso.voce}</b></span><button type="button" className="b piccolo" onClick={() => { const r = appenaPreso; setAppenaPreso(null); spunta({ ...r, preso: 1 }); }}>Annulla</button></div>}
     {tolto && <div className="tolto" role="status"><span>Tolto dalla lista: <b>{tolto.prodotto_id && tolto.scelto ? tolto.prodotto_scelto : tolto.voce}</b></span><button type="button" className="b piccolo" onClick={rimetti}>Annulla</button></div>}
     {err && <div className="errore">{err}</div>}
@@ -392,7 +392,13 @@ function Ricerca({ onAggiungi, onAvviso, onModulo, inMezzo = null }) {
       if (x.tipo === 'voce') { await fatto(() => perTesto(x.nome), true); return; }
       if (x.tipo === 'catalogo') await onAggiungi(api(`/api/catalogo/${x.ean}/usa`, { metodo: 'POST', corpo: { lista: true } }).then(() => api('/api/lista')));
       else if (x.prodotto_id && !x.quantitaScelta) { setQuanti(x); return; }
-      else await onAggiungi(api('/api/lista', { metodo: 'POST', corpo: { voce_id: x.voce_id, prodotto_id: x.prodotto_id, quantita: x.quantitaScelta ?? x.quantita, scelto: true } }));
+      else {
+        const messo = api('/api/lista', { metodo: 'POST', corpo: { voce_id: x.voce_id, prodotto_id: x.prodotto_id, quantita: x.quantitaScelta ?? x.quantita, scelto: true } });
+        await onAggiungi(messo);
+        // 0.99: si dice dove è finito (un'offerta del volantino di Aldi va nel giro di Aldi, non resta in questa pagina)
+        const riga = (await messo.catch(() => [])).find((r) => r.prodotto_id === x.prodotto_id && !r.preso);
+        if (riga) { setQuanti(null); onAvviso?.(`Messo in lista: ${x.nome}${riga.super?.catena && riga.catena_id ? `. Lo trovi nel giro di ${riga.super.catena}` : ''}`); pulisci(); return; }
+      }
       setQuanti(null); onAvviso?.(`Messo in lista: ${x.nome}`); pulisci();
     } catch (e) { setErr(e.message); } finally { setAttesa(false); }
   };
