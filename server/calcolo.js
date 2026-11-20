@@ -25,6 +25,21 @@ export function valeQui(r, s) {
   return r.ambito === s.area;
 }
 
+// 1.2: l'ultimo prezzo conosciuto per prodotto e supermercato anche se non vale più come prezzo di oggi
+// (l'ortofrutta dopo 6 giorni). Il prodotto lì si vende ancora: serve a non farlo sparire dalla ricerca e dal giro.
+// Le offerte finite non contano (quel prezzo non c'è più) e nemmeno quelle che devono ancora cominciare.
+export function ultimiPrezzi(db, data = oggi(), s = impostazioni(db)) {
+  const righe = db.prepare(`SELECT pr.*, c.ambito FROM prezzi pr JOIN catene c ON c.id = pr.catena_id
+    WHERE pr.rilevato_il <= ? AND pr.superato_il IS NULL ORDER BY pr.rilevato_il DESC, pr.id DESC`).all(data);
+  const out = new Map();
+  for (const r of righe) {
+    if (!valeQui(r, s) || (r.offerta && ((r.valido_al && r.valido_al < data) || (r.valido_dal && r.valido_dal > data)))) continue;
+    const k = `${r.prodotto_id}|${r.catena_id}`;
+    if (!out.has(k)) out.set(k, { ...r, stato: 'vecchio' });
+  }
+  return out;
+}
+
 // Per ogni prodotto e catena, il prezzo più recente se ancora valido alla data
 export function prezziValidi(db, data = oggi(), s = impostazioni(db)) {
   const righe = db.prepare(`SELECT pr.*, c.ambito, v.reparto FROM prezzi pr JOIN catene c ON c.id = pr.catena_id
@@ -93,6 +108,8 @@ export function miglioriPerCatena(db, righe, data, s, soloCatene = null) {
       if (!prossime.has(k) && valeQui(r, s)) prossime.set(k, { ...r, stato: 'prossimo' });
     }
   }
+  // 1.2: un prodotto preciso scelto da te (la tua Rucola di Tosano) va nel suo supermercato anche se il prezzo è vecchio
+  const vecchi = righe.some((r) => r.prodotto_id) ? ultimiPrezzi(db, data, s) : new Map();
   const tabella = new Map(); // riga.id → Map(catena_id → acquisto)
   for (const r of righe) {
     const m = new Map();
@@ -101,7 +118,7 @@ export function miglioriPerCatena(db, righe, data, s, soloCatene = null) {
       let best = null;
       for (const p of prodotti) {
         if (!rispetta(p, r)) continue;
-        const pr = prezzi.get(`${p.id}|${c.id}`) || (r.catena_id === c.id ? prossime.get(`${p.id}|${c.id}`) : null);
+        const pr = prezzi.get(`${p.id}|${c.id}`) || (r.catena_id === c.id ? prossime.get(`${p.id}|${c.id}`) : null) || (r.prodotto_id ? vecchi.get(`${p.id}|${c.id}`) : null);
         if (!pr) continue;
         const k = costo(p, pr, r.quantita, r.unita, !!r.prodotto_id);
         if (!k) continue;

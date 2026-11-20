@@ -6,7 +6,7 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { prepara as preparaDoppioni, doppioniDi, tutteLeCoppie, segnaDiversi, dimentica } from './doppioni.js';
 import { apri, RADICE, impostazioni, scrivi, PREDEFINITE, AMBITI, zonaDi, riordinaPrezzi } from './db.js';
-import { calcola, prezziValidi, statoPrezzo, confrontabile, valeQui, costo } from './calcolo.js';
+import { calcola, prezziValidi, ultimiPrezzi, statoPrezzo, confrontabile, valeQui, costo } from './calcolo.js';
 import { oggi, settimana, DATA } from './tempo.js';
 import * as mappe from './mappe.js';
 import * as off from './off.js';
@@ -1142,11 +1142,20 @@ app.get('/api/suggerisci', async (req) => {
   const vicine = catenePerRaggio(req);
   const livello = (cid) => (mie.has(cid) ? 2 : vicine.has(cid) ? 1 : 0);
   const migliorPrezzo = (pid) => { let b = null; for (const z of prezzi.values()) if (z.prodotto_id === pid && (!b || livello(z.catena_id) > livello(b.catena_id) || (livello(z.catena_id) === livello(b.catena_id) && z.prezzo < b.prezzo))) b = z; return b; };
+  // 1.2 (Nazario, 20/11: «rucola» non proponeva la sua Rucola di Tosano): senza un prezzo di oggi (l'ortofrutta scade dopo
+  // 6 giorni) il prodotto non sparisce più: si mostra con l'ultimo prezzo conosciuto e la data («prezzo del 10/11»)
+  const vecchi = ultimiPrezzi(db, oggi(), imp(req));
+  const ultimoPrezzo = (pid) => { let b = null; for (const z of vecchi.values()) if (z.prodotto_id === pid && (!b || livello(z.catena_id) > livello(b.catena_id) || (livello(z.catena_id) === livello(b.catena_id) && z.rilevato_il > b.rilevato_il))) b = z; return b; };
+  const preferiti = new Set(req.famiglia ? db.prepare('SELECT prodotto_id FROM preferiti WHERE utente = ? AND prodotto_id IS NOT NULL').pluck().all(`f${req.famiglia.id}`) : []);
   // e, se c'è, l'offerta in un altro supermercato del raggio che fa davvero risparmiare
   const offertaAltrove = (pid, z) => offertaAltroveDi(pid, z, { prezzi, mie, vicine, catene });
   // 0.53: per scegliere davvero servono, oltre al prezzo, il formato, il prezzo al kg / l / pezzo e la qualità
-  const righe = prodotti.map((p) => { const z = migliorPrezzo(p.id); const q = punteggio(p, voto(p.id)); const conFormato = !!p.sfuso || p.quantita > 0;
+  const righe = prodotti.map((p) => { const fresco = migliorPrezzo(p.id); const z = fresco || ultimoPrezzo(p.id); const q = punteggio(p, voto(p.id)); const conFormato = !!p.sfuso || p.quantita > 0;
     return { tipo: abituali.has(p.id) ? 'solito' : 'prodotto', prodotto_id: p.id, voce_id: p.voce_id, nome: p.nome, voce: p.voce, foto: p.foto,
+    preferito: preferiti.has(p.id), vecchio: !fresco && z ? z.rilevato_il : null,
+    // 1.2: la cosa cercata è proprio il tipo di prodotto («pasta» → voce Pasta), non solo una parola nel nome o nella marca
+    // (il dentifricio «Pasta del Capitano»): questi vengono prima, gli altri in fondo
+    cosaCercata: tutteLeParole(p.voce),
     quantita: p.sfuso ? 1 : p.quantita || 1, sfuso: !!p.sfuso, volte: abituali.get(p.id) || 0, prezzo: z?.prezzo ?? null, catena: z ? catene.get(z.catena_id) : null, offerta: !!z?.offerta,
     mio: !!z && mie.has(z.catena_id), altrove: offertaAltrove(p.id, z),
     formato: conFormato ? { quantita: p.sfuso ? null : p.quantita, unita: p.unita, pezzi: p.pezzi || null, pezzo: p.pezzo || '', sfuso: !!p.sfuso } : null,
@@ -1154,18 +1163,19 @@ app.get('/api/suggerisci', async (req) => {
     qualita: q, bio: !!p.bio, italiano: p.origine === 'italia', marca: p.marca || '' }; })
     // 0.59: nei risultati solo i prodotti con un prezzo (senza prezzo non aiutano a scegliere); gli altri si trovano con «Qualsiasi»
     .filter((r) => r.prezzo != null)
-    // prima quello che compri di solito, poi chi si può confrontare (prezzo e formato) dal più conveniente al kg/l/pz, poi gli altri
-    .sort((a, b) => b.volte - a.volte || (b.unitario != null) - (a.unitario != null) || (a.unitario != null && b.unitario != null && a.unita === b.unita ? a.unitario - b.unitario : 0)
+    // prima il tuo preferito e quello che compri di solito, poi chi ha il prezzo di oggi, poi chi si può confrontare
+    // (prezzo e formato) dal più conveniente al kg/l/pz, poi gli altri
+    .sort((a, b) => b.preferito - a.preferito || b.cosaCercata - a.cosaCercata || b.volte - a.volte || (!b.vecchio) - (!a.vecchio) || (b.unitario != null) - (a.unitario != null) || (a.unitario != null && b.unitario != null && a.unita === b.unita ? a.unitario - b.unitario : 0)
       || (b.prezzo != null) - (a.prezzo != null) || a.nome.length - b.nome.length).slice(0, 10);
   // i distintivi, solo tra prodotti che si confrontano (stessa unità, almeno due con prezzo e formato)
   for (const u of ['kg', 'l', 'pz']) {
-    const conf = righe.filter((r) => r.unitario != null && r.unita === u); if (conf.length < 2) continue;
+    const conf = righe.filter((r) => r.unitario != null && r.unita === u && !r.vecchio); if (conf.length < 2) continue; // 1.2: solo prezzi di oggi
     const eco = conf.reduce((m, r) => (r.unitario < m.unitario ? r : m)); eco.distintivi = [...(eco.distintivi || []), 'economico'];
     const conQ = conf.filter((r) => r.qualita != null);
     if (conQ.length >= 2) { const top = conQ.reduce((m, r) => (r.qualita > m.qualita ? r : m)); if (top !== eco) top.distintivi = [...(top.distintivi || []), 'qualita']; }
   }
   // 0.59 «Consigliato»: UN prodotto da prendere, con il motivo
-  const cons = consigliatoTra(righe); if (cons) { cons.r.consigliato = cons.motivo; cons.r.distintivi = (cons.r.distintivi || []).filter((d) => !(cons.toglie || []).includes(d)); if (!cons.r.volte) { righe.splice(righe.indexOf(cons.r), 1); righe.splice(righe.filter((r) => r.volte > 0).length, 0, cons.r); } } // subito dopo quelli che compri di solito
+  const cons = consigliatoTra(righe.filter((r) => !r.vecchio)); if (cons) { cons.r.consigliato = cons.motivo; cons.r.distintivi = (cons.r.distintivi || []).filter((d) => !(cons.toglie || []).includes(d)); if (!cons.r.volte) { righe.splice(righe.indexOf(cons.r), 1); righe.splice(righe.filter((r) => r.volte > 0).length, 0, cons.r); } } // subito dopo quelli che compri di solito
   // le voci (es. «Mandarini»: qualsiasi, scegli dopo quale). 0.59: una sola tra quelle simili («Fresh mandarin oranges» è
   // la stessa cosa di «Mandarini»): resta quella che comincia con la parola cercata, con più prodotti, dal nome più corto
   const conProdotti = new Map(db.prepare('SELECT voce_id, COUNT(*) n FROM prodotti GROUP BY voce_id').all().map((x) => [x.voce_id, x.n]));

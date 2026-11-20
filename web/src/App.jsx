@@ -347,11 +347,12 @@ function RigaSuggerita({ x, attesa, prendi }) {
       <span className="testo">
         {x.consigliato && <span className="sug-consigliato"><span className="bolla-consigliato">✓ Scelta saggia</span><span className="perche-consigliato">{x.consigliato}</span></span>}
         <b>{x.nome}</b>
-        <span className="sug-formato">{formato ? <span className="formato-chiaro">{formato}</span> : <span className="formato-manca">formato non indicato</span>}{x.bio ? <span className="pill bio">Bio</span> : null}{x.italiano ? <span className="pill ita">Italiano</span> : null}{x.tipo === 'solito' ? <span className="pill solito">Lo compri di solito</span> : null}</span>
+        <span className="sug-formato">{formato ? <span className="formato-chiaro">{formato}</span> : <span className="formato-manca">formato non indicato</span>}{x.preferito ? <span className="pill preferito-sug">★ Il tuo preferito</span> : null}{x.bio ? <span className="pill bio">Bio</span> : null}{x.italiano ? <span className="pill ita">Italiano</span> : null}{x.tipo === 'solito' ? <span className="pill solito">Lo compri di solito</span> : null}</span>
         {x.prezzo == null ? <span className="muto">ancora senza prezzo</span> : <span className="sug-prezzi">
           <span className="sug-lato"><Cartellino n={x.prezzo} /><small>{x.formato?.sfuso ? alUnita : 'la confezione'}</small></span>
           <span className="sug-unitario">{x.unitario == null ? <span className="muto">prezzo al {x.unita === 'l' ? 'litro' : x.unita === 'kg' ? 'kg' : 'pezzo'}: manca il formato</span> : <><b>{euro(x.unitario)}</b> {alUnita}</>}</span>
           {(x.catena || x.offerta) && <span className="sug-confezione">{x.catena ? <span className="pill super-lista">{x.catena}</span> : null}{x.offerta ? <span className="pill offerta">offerta</span> : null}</span>}
+          {x.vecchio && <span className="sug-vecchio">prezzo del {data(x.vecchio)}: da ricontrollare</span>}
         </span>}
         <span className={`sug-qualita ${g ? g.colore : 'ignoto'}`}><span className="luce" aria-hidden="true" />{g ? <><b>{x.qualita}/100</b> {g.parola}</> : 'Qualità da scoprire'}</span>
         {x.distintivi?.length ? <span className="sug-distintivi">{x.distintivi.map((d) => <span key={d} className={`distintivo ${d}`}>{DISTINTIVI[d]}{d === 'economico' ? ` ${alUnita}` : ''}</span>)}</span> : null}
