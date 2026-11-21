@@ -630,11 +630,26 @@ function Negozio({ n, liberi = [], propLib, presi, nonCera, onSpunta, onNonCera 
       {n.subtotale > 0 && <Cartellino n={n.subtotale} grande />}
     </div>
     <StatoOrari testo={n.orari} />
-    {/* 0.82: in alto quello che resta da prendere; quello che non c'era sotto; quello già preso in fondo */}
-    <ul className="acquisti da-spuntare">{[...n.righe.map((x) => ({ x })), ...liberi.map((l) => ({ l }))]
-      .map((e, i) => { const id = (e.x || e.l).riga.id; return { ...e, i, rango: presi.has(id) ? 2 : nonCera.has(id) ? 1 : 0 }; })
-      .sort((a, b) => a.rango - b.rango || a.i - b.i)
-      .map(({ x, l }) => { if (l) return <RigaLibera key={l.riga.id} l={l} qui={n.catena_id} {...propLib} />;
+    {/* 0.82: in alto quello che resta da prendere; quello che non c'era sotto; quello già preso in fondo.
+        1.3 (Nazario, 21/11): quello da prendere è raggruppato per reparto (frutta e verdura, pane, frigo… surgelati, persona, casa) */}
+    <ul className="acquisti da-spuntare">{(() => {
+      const elenco = [...n.righe.map((x) => ({ x })), ...liberi.map((l) => ({ l }))]
+        .map((e, i) => { const r = (e.x || e.l).riga; return { ...e, i, ordine: r.corsia_ordine ?? 99, rango: presi.has(r.id) ? 2 : nonCera.has(r.id) ? 1 : 0 }; })
+        .sort((a, b) => a.rango - b.rango || (a.rango ? 0 : a.ordine - b.ordine) || a.i - b.i);
+      const daPrendere = elenco.filter((e) => !e.rango);
+      const conTitoli = new Set(daPrendere.map((e) => (e.x || e.l).riga.corsia)).size > 1; // un reparto solo: niente titolo
+      const out = [];
+      elenco.forEach((e, k) => {
+        const r = (e.x || e.l).riga; const prima = elenco[k - 1];
+        if (conTitoli && !e.rango && (!prima || (prima.x || prima.l).riga.corsia !== r.corsia)) {
+          out.push(<li key={`corsia-${r.corsia}`} className="corsia-testa"><span>{r.corsia_nome}</span><small>{daPrendere.filter((d) => (d.x || d.l).riga.corsia === r.corsia).length}</small></li>);
+        }
+        if (e.rango && (!prima || !prima.rango)) out.push(<li key="corsia-fatto" className="corsia-testa fatto"><span>Già fatto</span></li>);
+        out.push(e);
+      });
+      return out;
+    })()
+      .map((e) => { if (!e || e.$$typeof) return e; const { x, l } = e; if (l) return <RigaLibera key={l.riga.id} l={l} qui={n.catena_id} {...propLib} />;
       const preso = presi.has(x.riga.id); const manca = !preso && nonCera.has(x.riga.id);
       return <li key={x.riga.id} className={`${preso ? 'preso' : ''}${manca ? ' non-cera' : ''}`} onClick={(e) => { if (!e.target.closest('button, a')) onSpunta(x.riga, n.catena_id); }}>
         <button type="button" className="spunta" role="checkbox" aria-checked={preso} aria-label={`${x.riga.voce}: ${preso ? 'preso' : 'da prendere'}`} onClick={() => onSpunta(x.riga, n.catena_id)}>{preso ? <Icona n="spunta" d={28} /> : null}</button>

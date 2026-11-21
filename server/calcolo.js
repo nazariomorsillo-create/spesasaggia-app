@@ -5,6 +5,7 @@ import { impostazioni, scrivi } from './db.js';
 import { oggi, giorniTra } from './tempo.js';
 import * as mappe from './mappe.js';
 import { punteggio } from './qualita.js';
+import { corsiaDi } from './categorie.js';
 
 const ORTO = new Set(['ortofrutta']);
 
@@ -267,7 +268,8 @@ export async function calcola(db, { data = oggi(), famiglia_id = null, s = impos
   return { data, impostazioni: { euro_km: s.euro_km, soglia_negozio: s.soglia_negozio, sosta: s.sosta }, righe: tutteRighe.map(rigaCorta), liberi, ...gl, soluzioni, piuEconomica: piuEconomica ? { ...piuEconomica, punteggio: undefined } : null, singoli: singoli.map((x) => ({ catena: x.catene[0], spesa: x.spesa, totale: x.totale, mancanti: x.mancanti.length, km: x.km })), avvisi };
 }
 
-const rigaCorta = (r) => ({ id: r.id, voce: r.voce, catena_libera: r.catena_libera ?? null, libera: !!r.libera, quantita: r.quantita, unita: r.unita, qualita: r.qualita, marca: r.marca, prodotto_scelto: r.prodotto_scelto || null });
+const rigaCorta = (r) => ({ id: r.id, voce: r.voce, catena_libera: r.catena_libera ?? null, libera: !!r.libera, quantita: r.quantita, unita: r.unita, qualita: r.qualita, marca: r.marca, prodotto_scelto: r.prodotto_scelto || null,
+  ...corsiaDi(r.voce, r.prodotto_scelto || '', r.reparto || 'altro') }); // 1.3: il reparto del supermercato, per raggruppare il giro
 const acquisto = (x) => ({
   riga: rigaCorta(x.riga), prodotto: x.prodotto.nome, prodotto_id: x.prodotto.id, foto: x.prodotto.foto || '', tipo: x.prodotto.tipo, marca: x.prodotto.marca, origine: x.prodotto.origine, bio: !!x.prodotto.bio, qualita: x.prodotto.qualita ?? null,
   confezioni: x.confezioni, formatoMancante: !!x.formatoMancante, costo: x.costo, prezzo: x.prezzo.prezzo, unitario: x.prezzo.unitario, offerta: !!x.prezzo.offerta,

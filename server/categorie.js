@@ -20,7 +20,7 @@ const CATEGORIE = [
   ['surgelati', 'Surgelati', 'surgelati', 'surgelat gelat congelat'],
   ['bimbi', 'Bimbi', null, 'pannolin omogeneizz pappe biberon salviett bimb bambin'],
   ['animali', 'Animali', null, 'crocchett gatt can mangim lettier'],
-  ['igiene', 'Igiene e cura della persona', null, 'sapon shampo bagnoschium dentifric spazzolin deodorant rasoi assorbent cotton crema viso corpo balsam'],
+  ['igiene', 'Igiene e cura della persona', null, 'sapon shampo bagnoschium dentifric spazzolin deodorant rasoi assorbent cotton crema viso corpo balsam collutor intim cerott lamett profum struccant'],
   ['pulizia', 'Detersivi e pulizia casa', null, 'detersiv ammorbident candeggin sgrassator lavastovigl pavimenti vetri spugn anticalcar igienizzant'],
   ['carta', 'Carta e usa e getta', null, 'carta igienic scottex tovagliol fazzolett rotol sacchett alluminio pellicol piatti bicchier'],
 ];
@@ -48,4 +48,29 @@ export function categoriaDi(voce, prodotto = '', reparto = 'altro') {
   }
   // senza parole note: per reparto
   return PER_REPARTO[reparto] || 'altro';
+}
+
+// 1.3 (Nazario, 21/11): nel giro i prodotti di ogni supermercato si raggruppano per reparto, nell'ordine in cui di solito
+// si gira un supermercato: frutta e verdura all'ingresso, poi pane, banco e frigo, dispensa, bevande, surgelati alla fine
+// (per non scongelarli), e i prodotti per la persona e per la casa a parte.
+const CORSIE = [
+  ['ortofrutta', 'Frutta e verdura', ['frutta', 'verdura']],
+  ['pane', 'Pane e forno', ['pane']],
+  ['carne', 'Carne e pesce', ['carne', 'pesce']],
+  ['frigo', 'Salumi, formaggi, latte e uova', ['salumi', 'latticini']],
+  ['pasta', 'Pasta, riso e farina', ['pasta']],
+  ['dispensa', 'Conserve, sughi e condimenti', ['conserve', 'condimenti']],
+  ['colazione', 'Colazione, dolci e snack', ['colazione', 'dolci']],
+  ['bevande', 'Acqua, bibite, vino e birra', ['bevande', 'alcolici']],
+  ['surgelati', 'Surgelati', ['surgelati']],
+  ['persona', 'Igiene e cura della persona', ['igiene', 'bimbi']],
+  ['casa', 'Detersivi, pulizia e carta', ['pulizia', 'carta']],
+  ['animali', 'Animali', ['animali']],
+];
+const CORSIA_DI = new Map(CORSIE.flatMap(([k, n, cat], i) => cat.map((c) => [c, { corsia: k, corsia_nome: n, corsia_ordine: i + 1 }])));
+export function corsiaDi(voce, prodotto = '', reparto = 'altro') {
+  let cat = categoriaDi(voce, prodotto, reparto);
+  if (/solubil/i.test(`${voce} ${prodotto}`)) cat = 'colazione'; // l'orzo solubile sta con il caffè, non con la pasta
+  if ((cat === 'carne' || cat === 'pesce') && reparto === 'dispensa') cat = 'conserve'; // tonno e sgombro in scatola: scaffale delle conserve
+  return CORSIA_DI.get(cat) || { corsia: 'altro', corsia_nome: 'Altro', corsia_ordine: CORSIE.length + 1 };
 }
