@@ -10,7 +10,7 @@ const CATEGORIE = [
   ['salumi', 'Salumi', null, 'prosciutt salam mortadell bresaol speck pancett coppa cotechin salum affettat'],
   ['latticini', 'Formaggi, latte e uova', null, 'latt yogurt burr pann mozzarell formagg parmigian grana pecorin ricott stracchin gorgonzol scamorz provol kefir uov mascarpon philadelphia crescenz'],
   ['pane', 'Pane e forno', 'pane', 'pan panin focacc pizz grissin crackers fette biscottat piadin tramezzin'],
-  ['pasta', 'Pasta, riso e cereali', null, 'past spaghett penn fusill rigaton riso farin cere fiocch muesl aven orzo cous polent gnocc tortellin ravioli lasagn'],
+  ['pasta', 'Pasta, riso e cereali', null, 'past spaghett penn fusill rigaton riso farin cere fiocch muesl aven orzo cous polent gnocc tortellin ravioli lasagn farr quinoa bulgur migli grano saracen'],
   ['dolci', 'Dolci, biscotti e snack', null, 'biscott merendin crem nocciol cioccolat caramell torta croissant brioch wafer snack patatin gelat budin marmellat miel zuccher'],
   ['conserve', 'Conserve, sughi e scatolame', null, 'pelat polpa passat sugh pesto conserv legum fagiol ceci lenticch mais oliv sottol sottacet scatolett'],
   ['condimenti', 'Olio, aceto e condimenti', null, 'oli acet sal pepe spezi maionese ketchup senape dado brodo'],
@@ -54,23 +54,27 @@ export function categoriaDi(voce, prodotto = '', reparto = 'altro') {
 // si gira un supermercato: frutta e verdura all'ingresso, poi pane, banco e frigo, dispensa, bevande, surgelati alla fine
 // (per non scongelarli), e i prodotti per la persona e per la casa a parte.
 const CORSIE = [
+  // 1.4 (Nazario, 21/11): pane, pasta, riso, cereali (farro…), biscotti e dolci tutti insieme; frigo e surgelati insieme
+  // (kefir, pasta sfoglia, pizza surgelata). Il freddo resta alla fine del giro, per non scaldarlo nel carrello.
   ['ortofrutta', 'Frutta e verdura', ['frutta', 'verdura']],
-  ['pane', 'Pane e forno', ['pane']],
-  ['carne', 'Carne e pesce', ['carne', 'pesce']],
-  ['frigo', 'Salumi, formaggi, latte e uova', ['salumi', 'latticini']],
-  ['pasta', 'Pasta, riso e farina', ['pasta']],
-  ['dispensa', 'Conserve, sughi e condimenti', ['conserve', 'condimenti']],
-  ['colazione', 'Colazione, dolci e snack', ['colazione', 'dolci']],
+  ['dispensa', 'Pane, pasta, riso, cereali e dolci', ['pane', 'pasta', 'dolci', 'colazione']],
+  ['conserve', 'Conserve, sughi e condimenti', ['conserve', 'condimenti']],
   ['bevande', 'Acqua, bibite, vino e birra', ['bevande', 'alcolici']],
-  ['surgelati', 'Surgelati', ['surgelati']],
   ['persona', 'Igiene e cura della persona', ['igiene', 'bimbi']],
   ['casa', 'Detersivi, pulizia e carta', ['pulizia', 'carta']],
   ['animali', 'Animali', ['animali']],
+  ['carne', 'Carne e pesce', ['carne', 'pesce']],
+  ['frigo', 'Frigo e surgelati', ['salumi', 'latticini', 'surgelati', 'frigo']],
 ];
 const CORSIA_DI = new Map(CORSIE.flatMap(([k, n, cat], i) => cat.map((c) => [c, { corsia: k, corsia_nome: n, corsia_ordine: i + 1 }])));
+// si conservano in frigo anche se il nome direbbe altro: pasta sfoglia, brisée, frolla, pasta fresca, gnocchi freschi
+const DA_FRIGO = /sfoglia|bris[eé]|pasta frolla|pasta fresca|impasto per pizza|pasta per pizza|lievito di birra/i;
 export function corsiaDi(voce, prodotto = '', reparto = 'altro') {
   let cat = categoriaDi(voce, prodotto, reparto);
-  if (/solubil/i.test(`${voce} ${prodotto}`)) cat = 'colazione'; // l'orzo solubile sta con il caffè, non con la pasta
+  const testo = `${voce} ${prodotto}`;
+  if (/solubil/i.test(testo)) cat = 'colazione'; // l'orzo solubile sta con il caffè, non con la pasta
   if ((cat === 'carne' || cat === 'pesce') && reparto === 'dispensa') cat = 'conserve'; // tonno e sgombro in scatola: scaffale delle conserve
+  // 1.4: dal banco frigo o dal congelatore (reparto «fresco» o «surgelati»): nel gruppo del freddo, tranne carne, pesce, frutta e verdura
+  if (DA_FRIGO.test(testo) || ((reparto === 'fresco' || reparto === 'surgelati') && !['carne', 'pesce', 'frutta', 'verdura'].includes(cat))) cat = 'frigo';
   return CORSIA_DI.get(cat) || { corsia: 'altro', corsia_nome: 'Altro', corsia_ordine: CORSIE.length + 1 };
 }
